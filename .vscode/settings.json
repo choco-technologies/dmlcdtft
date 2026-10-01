@@ -1,7 +1,7 @@
 {
     "files.associations": {
-        "dmlcdftf.h": "c",
-        "dmlcdftf_port.h": "c"
+        "dmlcdtft.h": "c",
+        "dmlcdtft_port.h": "c"
     },
     "C_Cpp.default.compileCommands": "${workspaceFolder}/build/compile_commands.json",
     "C_Cpp.intelliSenseEngine": "default",

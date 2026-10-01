@@ -29,8 +29,8 @@ set(DMOD_BUILD_TEMPLATES OFF CACHE BOOL "Build templates")
 
 FetchContent_MakeAvailable(dmod)
 
-project(dmlcdftf VERSION ${DMOD_MODULE_VERSION}
-    DESCRIPTION "dmlcdftf DMOD library module"
+project(dmlcdtft VERSION ${DMOD_MODULE_VERSION}
+    DESCRIPTION "dmlcdtft DMOD library module"
     LANGUAGES C CXX)
 
 set(DMOD_DIR ${dmod_SOURCE_DIR} CACHE PATH "DMOD source directory")
@@ -39,7 +39,7 @@ include(${DMOD_DIR}/paths.cmake)
 dmod_setup_external_module()
 
 # Name of the module
-set(DMOD_MODULE_NAME        dmlcdftf)
+set(DMOD_MODULE_NAME        dmlcdtft)
 
 # Author (should be string)
 set(DMOD_AUTHOR_NAME        "Patryk Kubiak")
@@ -48,7 +48,7 @@ set(DMOD_AUTHOR_NAME        "Patryk Kubiak")
 set(DMOD_STACK_SIZE         1024)
 
 # Path to the .dmr file - enables release package creation in build/packages/
-set(DMOD_DMR_PATH           ${CMAKE_CURRENT_SOURCE_DIR}/dmlcdftf.dmr)
+set(DMOD_DMR_PATH           ${CMAKE_CURRENT_SOURCE_DIR}/dmlcdtft.dmr)
 
 # List of MAL interfaces implemented by this module (leave empty if none)
 set(DMOD_MAL_IMPLS          )
@@ -64,7 +64,19 @@ set(DMOD_DIF_IMPLS          )
 #
 dmod_add_library(${DMOD_MODULE_NAME} ${DMOD_MODULE_VERSION}
     # List of source files - can include C and C++ files
-    src/dmlcdftf.c
+    src/dmlcdtft.c
+)
+
+# dmdrvi:  the driver interface dmlcdtft implements (src/dmlcdtft.c); its
+#          ioctl numbering starts at DMDRVI_IOCTL_CUSTOM_BASE (>= 2.0).
+# dmini:   .ini config parsing (resolution, timing, pixel format, ...).
+# dmgpio:  headers only - the display enable and backlight pins are dmgpio
+#          friends driven through Dmod_Ioctl() on their nodes, with the
+#          ioctl numbering of dmgpio >= 1.1 (same as dmspi's chip select).
+dmod_link_modules(${DMOD_MODULE_NAME}
+    dmdrvi@>=2.0
+    dmini
+    dmgpio@>=1.1
 )
 
 target_include_directories(${DMOD_MODULE_NAME} PRIVATE
@@ -75,12 +87,15 @@ target_include_directories(${DMOD_MODULE_NAME}_if INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
-# To depend on another module's headers, use:
-#   dmod_link_modules(${DMOD_MODULE_NAME}
-#       other_module@1.0
-#   )
-
 add_subdirectory(src/port)
 target_link_libraries(${DMOD_MODULE_NAME} ${DMOD_MODULE_NAME}_port_if)
 enable_testing()
 add_subdirectory(tests)
+
+# ======================================================================
+#               lcdtest Tool
+# ======================================================================
+# On-target application - draws test patterns through the real device node
+# dmdevfs creates for a configured display (see tools/lcdtest/README.md).
+# Not part of the ctest suite: it needs a display controller to look at.
+add_subdirectory(tools/lcdtest)

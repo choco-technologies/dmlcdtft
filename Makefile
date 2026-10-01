@@ -15,7 +15,7 @@ include $(DMOD_DIR)/paths.mk
 # -----------------------------------------------------------------------------
 
 # The name of the module
-DMOD_MODULE_NAME=dmlcdftf
+DMOD_MODULE_NAME=dmlcdtft
 
 # The version of the module
 DMOD_MODULE_VERSION=0.1
@@ -24,7 +24,7 @@ DMOD_MODULE_VERSION=0.1
 DMOD_AUTHOR_NAME=Patryk Kubiak
 
 # The list of C sources
-DMOD_CSOURCES=src/dmlcdftf.c
+DMOD_CSOURCES=src/dmlcdtft.c
 
 # The list of C++ sources
 DMOD_CXXSOURCES=
@@ -33,7 +33,7 @@ DMOD_CXXSOURCES=
 DMOD_INC_DIRS=include
 
 # The list of libraries to link
-DMOD_LIBS=
+DMOD_LIBS=dmdrvi dmini dmgpio dmlcdtft_port
 
 # The list of definitions
 DMOD_DEFINITIONS=

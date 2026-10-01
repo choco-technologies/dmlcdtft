@@ -1,20 +1,28 @@
-# dmlcdftf Documentation
+# dmlcdtft Documentation
 
-Welcome to the dmlcdftf module documentation.
+`dmlcdtft` is a dmdrvi driver for parallel RGB LCD-TFT panels (LTDC on
+STM32F4/F7). It exposes the framebuffer as `/dev/dmlcdtft0`.
 
 ## Contents
 
-- **[api-reference.md](api-reference.md)** - Complete API documentation
+- **[api-reference.md](api-reference.md)** - device file semantics, ioctl commands, types, module API
+- **[configuration.md](configuration.md)** - INI keys, framebuffer memory, panel control pins
+- **[port-implementation.md](port-implementation.md)** - core/port split and adding a new port
 
 ## Quick Reference
 
 ```c
-#include "dmlcdftf.h"
+#include "dmlcdtft_types.h"
+
+void *fb = Dmod_FileOpen("/dev/dmlcdtft0", "r+");
+dmlcdtft_fill_rect_t rect = { 0, 0, 100, 50, 0xFFFF0000 };
+Dmod_Ioctl(fb, dmlcdtft_ioctl_cmd_fill_rect, &rect);
+Dmod_FileClose(fb);
 ```
 
 View documentation using `dmf-man`:
 
 ```bash
-dmf-man dmlcdftf          # Main documentation
-dmf-man dmlcdftf api      # API reference
+dmf-man dmlcdtft          # Main documentation
+dmf-man dmlcdtft api      # API reference
 ```
