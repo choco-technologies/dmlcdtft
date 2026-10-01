@@ -18,7 +18,7 @@ dmod_add_executable(lcdtest ${DMOD_MODULE_VERSION}
 # dmosi: tick count for the refresh rate measurement.
 dmod_link_modules(lcdtest
     dmosi
-    dmdrvi@>=2.0
+    dmdrvi@>=2.2
 )
 
 target_link_libraries(lcdtest dmlcdtft_if)

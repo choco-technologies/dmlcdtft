@@ -39,7 +39,7 @@ dmod_add_library(${DMOD_MODULE_NAME} ${DMOD_MODULE_VERSION}
 # dmdrvi: headers only - dmlcdtft_types.h numbers the ioctl commands from
 #         DMDRVI_IOCTL_CUSTOM_BASE.
 dmod_link_modules(${DMOD_MODULE_NAME}
-    dmdrvi@>=2.0
+    dmdrvi@>=2.2
 )
 
 # dmclk_port: SYSCLK, to derive the PLL input clock PLLSAI shares with the

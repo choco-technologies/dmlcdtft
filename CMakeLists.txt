@@ -68,13 +68,14 @@ dmod_add_library(${DMOD_MODULE_NAME} ${DMOD_MODULE_VERSION}
 )
 
 # dmdrvi:  the driver interface dmlcdtft implements (src/dmlcdtft.c); its
-#          ioctl numbering starts at DMDRVI_IOCTL_CUSTOM_BASE (>= 2.0).
+#          standard graphics ioctls (DMDRVI_IOCTL_GFX_*) need >= 2.2; its own
+#          ioctl numbering starts at DMDRVI_IOCTL_CUSTOM_BASE.
 # dmini:   .ini config parsing (resolution, timing, pixel format, ...).
 # dmgpio:  headers only - the display enable and backlight pins are dmgpio
 #          friends driven through Dmod_Ioctl() on their nodes, with the
 #          ioctl numbering of dmgpio >= 1.1 (same as dmspi's chip select).
 dmod_link_modules(${DMOD_MODULE_NAME}
-    dmdrvi@>=2.0
+    dmdrvi@>=2.2
     dmini
     dmgpio@>=1.1
 )
