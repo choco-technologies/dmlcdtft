@@ -1,4 +1,4 @@
-# DMOD Resource File for dmlcdftf
+# DMOD Resource File for lcdtest
 # This file specifies where resources should be installed
 
 # === Core Module ===
@@ -15,19 +15,16 @@ dmd=./${module}.dmd => ${destination}/${module}.dmd [origin=${dmf_dir}/${module}
 version=./${module}_version.txt => ${destination}/${module}_version.txt [origin=${dmf_dir}/${module}_version.txt]
 
 # === Documentation ===
-# Module documentation in markdown format for dmf-man tool
-docs=./docs => ${destination}/${module}/docs [origin=${repo_dir}/docs]
-
 # README file
-readme=./README.md => ${destination}/${module}/README.md [origin=${repo_dir}/README.md]
-
-# === Header Files ===
-# Include directory with all headers (public header + generated <module>_defs.h)
-inc=./include => ${destination}/${module}/include [origin=${repo_dir}/include] [origin=${build_dir}/${module}_defs.h]
+# NOTE: ${repo_dir} is the top-level repo root (CMAKE_SOURCE_DIR), since
+# lcdtest is built via add_subdirectory() from dmspi's own CMakeLists.txt -
+# so paths here are given relative to the repo root, not to tools/lcdtest
+# itself.
+readme=./README.md => ${destination}/${module}/README.md [origin=${repo_dir}/tools/lcdtest/README.md]
 
 # === License ===
-# License file
+# License file (shared with the rest of the dmspi repository)
 license=./LICENSE => ${destination}/${module}/LICENSE [origin=${repo_dir}/LICENSE]
 
 # Adding itself
-dmr=./${module}.dmr => ${destination}/${module}/${module}.dmr [origin=${repo_dir}/${module}.dmr]
+dmr=./${module}.dmr => ${destination}/${module}/${module}.dmr [origin=${repo_dir}/tools/lcdtest/${module}.dmr]

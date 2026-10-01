@@ -19,16 +19,20 @@ jobs:
       - name: List available CPU families
         id: list-families
         run: |
+          # x86_64 is the software stand-in port CI uses to run the tests
+          # (see ci.yml) - it is never published, and a full build for it
+          # fails anyway: dmgpio has no x86_64 package to fetch headers from.
           CPU_FAMILIES=$(find src/port -mindepth 2 -maxdepth 2 -name "port.c" -type f -printf '%h\n' | \
             xargs -n1 basename | \
+            grep -vx 'x86_64' | \
             sort | \
             jq -R -s -c 'split("\n") | map(select(length > 0))')
 
           echo "Found CPU families: $CPU_FAMILIES"
           echo "cpu_families=$CPU_FAMILIES" >> $GITHUB_OUTPUT
 
-  build-dmlcdftf:
-    name: Build dmlcdftf for ${{ matrix.cpu_family }}
+  build-dmlcdtft:
+    name: Build dmlcdtft for ${{ matrix.cpu_family }}
     needs: discover-cpu-families
     runs-on: ubuntu-latest
     permissions:
@@ -52,7 +56,7 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Extracted version: $VERSION"
 
-      - name: Build dmlcdftf for ${{ matrix.cpu_family }}
+      - name: Build dmlcdtft for ${{ matrix.cpu_family }}
         run: |
           set -e
           CPU_FAMILY="${{ matrix.cpu_family }}"
@@ -62,10 +66,10 @@ jobs:
           mkdir -p build_$BUILD_NAME
           cd build_$BUILD_NAME
 
-          # DMOD_DMR_PATH is already set for both dmlcdftf and
-          # dmlcdftf_port in their respective CMakeLists.txt, so this
+          # DMOD_DMR_PATH is already set for both dmlcdtft and
+          # dmlcdtft_port in their respective CMakeLists.txt, so this
           # build also assembles packages/<module>/ for every module defined
-          # in this repo (normally dmlcdftf and dmlcdftf_port, but
+          # in this repo (normally dmlcdtft and dmlcdtft_port, but
           # this discovers whatever is actually there).
           cmake .. \
             -DDMOD_MODULE_VERSION="${{ steps.get_version.outputs.version }}" \
@@ -114,7 +118,7 @@ jobs:
 
   generate-versions-manifest:
     name: Generate versions.dmm
-    needs: [discover-cpu-families, build-dmlcdftf]
+    needs: [discover-cpu-families, build-dmlcdtft]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -133,7 +137,7 @@ jobs:
       - name: Generate versions.dmm
         run: |
           set -e
-          echo "# List of available versions for dmlcdftf modules" > versions.dmm
+          echo "# List of available versions for dmlcdtft modules" > versions.dmm
           echo "# Generated automatically by CI" >> versions.dmm
           echo "" >> versions.dmm
 
@@ -167,7 +171,7 @@ jobs:
 
   upload-release-assets:
     name: Upload Release Assets
-    needs: [build-dmlcdftf, generate-versions-manifest]
+    needs: [build-dmlcdtft, generate-versions-manifest]
     runs-on: ubuntu-latest
     permissions:
       contents: write

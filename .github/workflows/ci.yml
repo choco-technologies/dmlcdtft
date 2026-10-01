@@ -8,7 +8,7 @@ on:
 
 jobs:
   build-and-test-core:
-    name: Build and Test dmlcdftf (core)
+    name: Build and Test dmlcdtft (core)
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -19,30 +19,62 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Build dmlcdftf core module
+      - name: Build dmlcdtft core module
         run: |
           mkdir -p build
           cd build
-          # dmlcdftf links against dmlcdftf_port_if (headers only),
-          # not dmlcdftf_port itself, so building only these two targets
+          # dmlcdtft links against dmlcdtft_port_if (headers only),
+          # not dmlcdtft_port itself, so building only these two targets
           # never touches src/port/*/port.c - safe to build natively here
-          # regardless of which CPU family the port defaults to.
+          # regardless of which CPU family the port defaults to. Leave
+          # DMOD_CPU_FAMILY at its default (stm32f7): dmod_link_modules'
+          # header fetch for dmgpio keys off of it too, and dmgpio has never
+          # published an x86_64 package - only stm32f4/stm32f7, which is
+          # also all its release pipeline ever builds. Overriding it to
+          # x86_64 here 404s that fetch, since dmgpio's headers don't come
+          # from a family-independent package.
           cmake .. -DDMOD_MODE=DMOD_MODULE -DDMOD_TOOLS_NAME=arch/x86_64
-          cmake --build . --target dmlcdftf test_dmlcdftf
+          cmake --build . --target dmlcdtft test_dmlcdtft
+
+      - name: Build x86_64 dmlcdtft_port stub
+        run: |
+          # Separate build dir/configure so DMOD_CPU_FAMILY=x86_64 here can't
+          # affect the dmgpio header fetch above. dmlcdtft_port itself has no
+          # x86_64 release (it is real LTDC register access) - this builds
+          # src/port/x86_64/port.c, a software stand-in for the display controller that exists
+          # purely so dmod_loader has something to satisfy dmlcdtft's runtime
+          # dmlcdtft_port dependency with below.
+          mkdir -p build_dmlcdtft_port_x86_64
+          cd build_dmlcdtft_port_x86_64
+          cmake .. -DDMOD_MODE=DMOD_MODULE -DDMOD_TOOLS_NAME=arch/x86_64 -DDMOD_CPU_FAMILY=x86_64
+          cmake --build . --target dmlcdtft_port
+          cp dmf/dmlcdtft_port.dmf dmf/dmlcdtft_port.dmd ../build/dmf/
 
       - name: Verify module files
         run: |
           echo "Checking for module files..."
           ls -lh build/dmf/
-          test -f build/dmf/dmlcdftf.dmf
-          test -f build/dmf/dmlcdftf_version.txt
-          test -f build/dmf/test_dmlcdftf.dmf
+          test -f build/dmf/dmlcdtft.dmf
+          test -f build/dmf/dmlcdtft_version.txt
+          test -f build/dmf/test_dmlcdtft.dmf
+          test -f build/dmf/dmlcdtft_port.dmf
           echo "Module files present"
 
       - name: Run tests with dmod_loader
         run: |
           export DMOD_DMF_DIR=$(pwd)/build/dmf
-          dmod_loader build/dmf/test_dmlcdftf.dmf
+          # dmod_link_modules only fetches headers at configure time; dmlcdtft's
+          # own runtime dependencies (dmini) still need to be staged
+          # into build/dmf before dmod_loader can resolve them, same as the
+          # ctest target defined in tests/CMakeLists.txt already does.
+          # dmlcdtft.dmd also lists dmlcdtft_port, which has no published x86_64
+          # release (only the real stm32f4/stm32f7 hardware ports are
+          # published) - the build step above already placed our own
+          # x86_64 dmlcdtft_port.dmf (the software stand-in) in build/dmf, so
+          # `|| true` just lets dmf-get's redundant remote lookup for it
+          # fail without masking a real failure to fetch dmini.
+          dmf-get install -d build/dmf/dmlcdtft.dmd -y || true
+          dmod_loader build/dmf/test_dmlcdtft.dmf
 
   discover-cpu-families:
     name: Discover CPU Families
@@ -67,8 +99,8 @@ jobs:
           echo "Found CPU families: $CPU_FAMILIES"
           echo "cpu_families=$CPU_FAMILIES" >> $GITHUB_OUTPUT
 
-  build-dmlcdftf:
-    name: Build dmlcdftf for ${{ matrix.cpu_family }}
+  build-dmlcdtft:
+    name: Build dmlcdtft for ${{ matrix.cpu_family }}
     needs: discover-cpu-families
     runs-on: ubuntu-latest
     permissions:
@@ -84,7 +116,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Build dmlcdftf for ${{ matrix.cpu_family }}
+      - name: Build dmlcdtft for ${{ matrix.cpu_family }}
         run: |
           set -e
           CPU_FAMILY="${{ matrix.cpu_family }}"
@@ -92,16 +124,26 @@ jobs:
           cd build_$CPU_FAMILY
 
           cmake .. -DDMOD_CPU_FAMILY="${CPU_FAMILY}"
-          cmake --build .
+          if [ "$CPU_FAMILY" = "x86_64" ]; then
+            # x86_64 only exists as a software stand-in for the
+            # real (hardware-only) dmlcdtft_port - it has no dmlcdtft release of
+            # its own to build, and building the full "all" target here
+            # would also re-fetch dmgpio's headers keyed off this same
+            # DMOD_CPU_FAMILY, which 404s since dmgpio never published an
+            # x86_64 package (see the core job's comment on this).
+            cmake --build . --target dmlcdtft_port
+          else
+            cmake --build .
+          fi
 
           echo "Build completed for CPU family: ${CPU_FAMILY}"
           ls -lh dmf/
 
-      - name: Verify dmlcdftf_port module files
+      - name: Verify dmlcdtft_port module files
         run: |
           CPU_FAMILY="${{ matrix.cpu_family }}"
-          echo "Checking for dmlcdftf_port module files for ${CPU_FAMILY}..."
+          echo "Checking for dmlcdtft_port module files for ${CPU_FAMILY}..."
           ls -lh build_$CPU_FAMILY/dmf/
-          test -f build_$CPU_FAMILY/dmf/dmlcdftf_port.dmf
-          test -f build_$CPU_FAMILY/dmf/dmlcdftf_port_version.txt
+          test -f build_$CPU_FAMILY/dmf/dmlcdtft_port.dmf
+          test -f build_$CPU_FAMILY/dmf/dmlcdtft_port_version.txt
           echo "Module files present for ${CPU_FAMILY}"

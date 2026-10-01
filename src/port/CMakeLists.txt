@@ -1,9 +1,9 @@
 # ======================================================================
-#               dmlcdftf_port Module Configuration
+#               dmlcdtft_port Module Configuration
 # ======================================================================
 
 # Name of the module
-set(DMOD_MODULE_NAME        dmlcdftf_port)
+set(DMOD_MODULE_NAME        dmlcdtft_port)
 
 # Version is already set above and used in project()
 
@@ -14,7 +14,15 @@ set(DMOD_AUTHOR_NAME        "Patryk Kubiak")
 set(DMOD_STACK_SIZE         1024)
 
 # Path to the DMR file for this module
-set(DMOD_DMR_PATH           ${CMAKE_SOURCE_DIR}/dmlcdftf_port.dmr)
+set(DMOD_DMR_PATH           ${CMAKE_SOURCE_DIR}/dmlcdtft_port.dmr)
+
+# Every STM32 family with an LTDC shares the same register layout and clock
+# path (see src/port/stm32_common), so a stm32 family port only adds its
+# thin port.c on top of the shared implementation.
+set(COMMON_SOURCES "")
+if(DMOD_CPU_FAMILY MATCHES "^stm32")
+    set(COMMON_SOURCES stm32_common/stm32_common.c)
+endif()
 
 #
 #   dmod_add_library - create a library module
@@ -25,12 +33,25 @@ set(DMOD_DMR_PATH           ${CMAKE_SOURCE_DIR}/dmlcdftf_port.dmr)
 dmod_add_library(${DMOD_MODULE_NAME} ${DMOD_MODULE_VERSION}
     # List of source files - can include C and C++ files
     ${DMOD_CPU_FAMILY}/port.c
+    ${COMMON_SOURCES}
 )
 
-# To depend on another module's headers, use:
-#   dmod_link_modules(${DMOD_MODULE_NAME}
-#       other_module@1.0
-#   )
+# dmdrvi: headers only - dmlcdtft_types.h numbers the ioctl commands from
+#         DMDRVI_IOCTL_CUSTOM_BASE.
+dmod_link_modules(${DMOD_MODULE_NAME}
+    dmdrvi@>=2.0
+)
+
+# dmclk_port: SYSCLK, to derive the PLL input clock PLLSAI shares with the
+#             main PLL when it runs from HSE.
+# dmosi:      vsync/reload semaphore posted from the LTDC ISR, tick count for
+#             timeouts, minimum interrupt priority.
+if(DMOD_CPU_FAMILY MATCHES "^stm32")
+    dmod_link_modules(${DMOD_MODULE_NAME}
+        dmclk_port
+        dmosi
+    )
+endif()
 
 target_include_directories(${DMOD_MODULE_NAME} BEFORE PRIVATE
     ${CMAKE_SOURCE_DIR}/include
