@@ -17,7 +17,7 @@
 typedef struct
 {
     void           *fp;
-    dmlcdtft_info_t info;
+    dmdrvi_gfx_info_t info;
 } display_t;
 
 static void print_usage(const char *name)
@@ -41,9 +41,9 @@ static bool display_open(display_t *d, const char *path)
         DMOD_LOG_ERROR("lcdtest: failed to open '%s'\n", path);
         return false;
     }
-    if (Dmod_Ioctl(d->fp, dmlcdtft_ioctl_cmd_get_info, &d->info) != 0)
+    if (Dmod_Ioctl(d->fp, DMDRVI_IOCTL_GFX_GET_INFO, &d->info) != 0)
     {
-        DMOD_LOG_ERROR("lcdtest: '%s' is not a dmlcdtft device\n", path);
+        DMOD_LOG_ERROR("lcdtest: '%s' is not a graphics device\n", path);
         Dmod_FileClose(d->fp);
         return false;
     }
@@ -52,8 +52,8 @@ static bool display_open(display_t *d, const char *path)
 
 static int fill(display_t *d, uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint32_t argb)
 {
-    dmlcdtft_fill_rect_t rect = { x, y, w, h, argb };
-    return Dmod_Ioctl(d->fp, dmlcdtft_ioctl_cmd_fill_rect, &rect);
+    dmdrvi_gfx_fill_rect_t rect = { x, y, w, h, argb };
+    return Dmod_Ioctl(d->fp, DMDRVI_IOCTL_GFX_FILL_RECT, &rect);
 }
 
 static uint32_t parse_hex(const char *s)
@@ -84,29 +84,34 @@ static uint32_t parse_count(const char *s, uint32_t default_value)
 
 /* A switch, not a table of name pointers: the dmod loader does not relocate
  * pointers stored in initialized data. */
-static const char *format_name(dmlcdtft_pixel_format_t format)
+static const char *format_name(dmdrvi_gfx_pixel_format_t format)
 {
     switch (format)
     {
-        case dmlcdtft_pixel_format_argb8888: return "argb8888";
-        case dmlcdtft_pixel_format_rgb888:   return "rgb888";
-        case dmlcdtft_pixel_format_rgb565:   return "rgb565";
-        case dmlcdtft_pixel_format_argb1555: return "argb1555";
-        case dmlcdtft_pixel_format_argb4444: return "argb4444";
+        case DMDRVI_GFX_PIXEL_FORMAT_ARGB8888: return "argb8888";
+        case DMDRVI_GFX_PIXEL_FORMAT_RGB888:   return "rgb888";
+        case DMDRVI_GFX_PIXEL_FORMAT_RGB565:   return "rgb565";
+        case DMDRVI_GFX_PIXEL_FORMAT_ARGB1555: return "argb1555";
+        case DMDRVI_GFX_PIXEL_FORMAT_ARGB4444: return "argb4444";
         default:                             return "?";
     }
 }
 
 static int cmd_info(display_t *d)
 {
-    const dmlcdtft_info_t *i = &d->info;
+    const dmdrvi_gfx_info_t *i = &d->info;
 
     Dmod_Printf("resolution:   %ux%u\n", i->width, i->height);
     Dmod_Printf("pixel format: %s (%u bytes/pixel, stride %u)\n",
                 format_name(i->pixel_format), i->bytes_per_pixel, i->stride);
     Dmod_Printf("framebuffer:  %u bytes x %u\n", i->framebuffer_size, i->buffer_count);
-    Dmod_Printf("pixel clock:  %u Hz\n", i->pixel_clock_hz);
-    Dmod_Printf("underruns:    %u\n", i->underrun_count);
+
+    dmlcdtft_status_t status;
+    if (Dmod_Ioctl(d->fp, dmlcdtft_ioctl_cmd_get_status, &status) == 0)
+    {
+        Dmod_Printf("pixel clock:  %u Hz\n", status.pixel_clock_hz);
+        Dmod_Printf("underruns:    %u\n", status.underrun_count);
+    }
     return 0;
 }
 
@@ -146,7 +151,7 @@ static void store_pixel(uint8_t *dst, uint8_t bytes_per_pixel, uint32_t pixel)
  * one line at a time through write(), so it exercises the file interface. */
 static int cmd_gradient(display_t *d)
 {
-    const dmlcdtft_info_t *i = &d->info;
+    const dmdrvi_gfx_info_t *i = &d->info;
     uint8_t *line = Dmod_Malloc(i->stride);
     int ret = 0;
 
@@ -206,11 +211,11 @@ static int cmd_selftest(display_t *d)
 static int cmd_vsync(display_t *d, uint32_t frames)
 {
     uint32_t timeout = VSYNC_TIMEOUT_MS;
-    int ret = Dmod_Ioctl(d->fp, dmlcdtft_ioctl_cmd_wait_vsync, &timeout);
+    int ret = Dmod_Ioctl(d->fp, DMDRVI_IOCTL_GFX_WAIT_VSYNC, &timeout);
     uint32_t start = dmosi_get_tick_count();
 
     for (uint32_t i = 0; i < frames && ret == 0; i++)
-        ret = Dmod_Ioctl(d->fp, dmlcdtft_ioctl_cmd_wait_vsync, &timeout);
+        ret = Dmod_Ioctl(d->fp, DMDRVI_IOCTL_GFX_WAIT_VSYNC, &timeout);
     if (ret != 0)
     {
         DMOD_LOG_ERROR("lcdtest: waiting for vsync failed (%d)\n", ret);
@@ -243,8 +248,8 @@ static int cmd_anim(display_t *d, uint32_t frames)
     {
         ret = draw_frame(d, (uint16_t)x, (uint16_t)y, size, frame);
         if (ret == 0)
-            ret = swap ? Dmod_Ioctl(d->fp, dmlcdtft_ioctl_cmd_swap_buffers, NULL)
-                       : Dmod_Ioctl(d->fp, dmlcdtft_ioctl_cmd_wait_vsync, NULL);
+            ret = swap ? Dmod_Ioctl(d->fp, DMDRVI_IOCTL_GFX_SWAP_BUFFERS, NULL)
+                       : Dmod_Ioctl(d->fp, DMDRVI_IOCTL_GFX_WAIT_VSYNC, NULL);
 
         x += dx;
         y += dy;

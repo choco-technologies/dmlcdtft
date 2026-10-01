@@ -20,7 +20,7 @@ dmod_dmlcdtft_api(1.0, bool, _validate_config, ( const dmlcdtft_config_t *config
  *
  * @return 2, 3 or 4, or 0 for an unknown format.
  */
-dmod_dmlcdtft_api(1.0, uint8_t, _bytes_per_pixel, ( dmlcdtft_pixel_format_t format ));
+dmod_dmlcdtft_api(1.0, uint8_t, _bytes_per_pixel, ( dmdrvi_gfx_pixel_format_t format ));
 
 /**
  * @brief Convert a 0xAARRGGBB color to the raw pixel value of a format.
@@ -28,6 +28,6 @@ dmod_dmlcdtft_api(1.0, uint8_t, _bytes_per_pixel, ( dmlcdtft_pixel_format_t form
  * The result occupies the low dmlcdtft_bytes_per_pixel(format) bytes and is
  * stored in memory little-endian, the way the controller reads it.
  */
-dmod_dmlcdtft_api(1.0, uint32_t, _color_to_pixel, ( dmlcdtft_pixel_format_t format, uint32_t argb ));
+dmod_dmlcdtft_api(1.0, uint32_t, _color_to_pixel, ( dmdrvi_gfx_pixel_format_t format, uint32_t argb ));
 
 #endif // DMLCDTFT_H

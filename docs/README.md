@@ -15,8 +15,8 @@ STM32F4/F7). It exposes the framebuffer as `/dev/dmlcdtft0`.
 #include "dmlcdtft_types.h"
 
 void *fb = Dmod_FileOpen("/dev/dmlcdtft0", "r+");
-dmlcdtft_fill_rect_t rect = { 0, 0, 100, 50, 0xFFFF0000 };
-Dmod_Ioctl(fb, dmlcdtft_ioctl_cmd_fill_rect, &rect);
+dmdrvi_gfx_fill_rect_t rect = { 0, 0, 100, 50, 0xFFFF0000 };
+Dmod_Ioctl(fb, DMDRVI_IOCTL_GFX_FILL_RECT, &rect);
 Dmod_FileClose(fb);
 ```
 
