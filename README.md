@@ -81,10 +81,10 @@ Then, from any module:
 #include "dmlcdtft_types.h"
 
 void *fb = Dmod_FileOpen("/dev/dmlcdtft0", "r+");
-dmlcdtft_info_t info;
-Dmod_Ioctl(fb, dmlcdtft_ioctl_cmd_get_info, &info);
-dmlcdtft_fill_rect_t rect = { 0, 0, info.width, info.height, 0xFF0000FF };
-Dmod_Ioctl(fb, dmlcdtft_ioctl_cmd_fill_rect, &rect);
+dmdrvi_gfx_info_t info;
+Dmod_Ioctl(fb, DMDRVI_IOCTL_GFX_GET_INFO, &info);
+dmdrvi_gfx_fill_rect_t rect = { 0, 0, info.width, info.height, 0xFF0000FF };
+Dmod_Ioctl(fb, DMDRVI_IOCTL_GFX_FILL_RECT, &rect);
 Dmod_FileClose(fb);
 ```
 

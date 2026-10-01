@@ -48,7 +48,7 @@ void dmod_test_setup(void)
     memset(&g_config, 0, sizeof(g_config));
     g_config.width                 = 480;
     g_config.height                = 272;
-    g_config.pixel_format          = dmlcdtft_pixel_format_rgb565;
+    g_config.pixel_format          = DMDRVI_GFX_PIXEL_FORMAT_RGB565;
     g_config.timing.pixel_clock_hz = 9600000;
     g_config.timing.hsync_width    = 41;
     g_config.timing.vsync_width    = 10;
@@ -77,7 +77,7 @@ DMOD_TEST_STEP(dmlcdtft_validate_config_rejects_bad_values)
     DMOD_TEST_EXPECT_FALSE(dmlcdtft_validate_config(&g_config));
 
     dmod_test_setup();
-    g_config.pixel_format = dmlcdtft_pixel_format_count;
+    g_config.pixel_format = DMDRVI_GFX_PIXEL_FORMAT_COUNT;
     DMOD_TEST_EXPECT_FALSE(dmlcdtft_validate_config(&g_config));
 
     dmod_test_setup();
@@ -87,23 +87,23 @@ DMOD_TEST_STEP(dmlcdtft_validate_config_rejects_bad_values)
 
 DMOD_TEST_STEP(dmlcdtft_bytes_per_pixel_matches_formats)
 {
-    DMOD_TEST_EXPECT_EQ(dmlcdtft_bytes_per_pixel(dmlcdtft_pixel_format_argb8888), 4);
-    DMOD_TEST_EXPECT_EQ(dmlcdtft_bytes_per_pixel(dmlcdtft_pixel_format_rgb888), 3);
-    DMOD_TEST_EXPECT_EQ(dmlcdtft_bytes_per_pixel(dmlcdtft_pixel_format_rgb565), 2);
-    DMOD_TEST_EXPECT_EQ(dmlcdtft_bytes_per_pixel(dmlcdtft_pixel_format_argb1555), 2);
-    DMOD_TEST_EXPECT_EQ(dmlcdtft_bytes_per_pixel(dmlcdtft_pixel_format_argb4444), 2);
-    DMOD_TEST_EXPECT_EQ(dmlcdtft_bytes_per_pixel(dmlcdtft_pixel_format_count), 0);
+    DMOD_TEST_EXPECT_EQ(dmlcdtft_bytes_per_pixel(DMDRVI_GFX_PIXEL_FORMAT_ARGB8888), 4);
+    DMOD_TEST_EXPECT_EQ(dmlcdtft_bytes_per_pixel(DMDRVI_GFX_PIXEL_FORMAT_RGB888), 3);
+    DMOD_TEST_EXPECT_EQ(dmlcdtft_bytes_per_pixel(DMDRVI_GFX_PIXEL_FORMAT_RGB565), 2);
+    DMOD_TEST_EXPECT_EQ(dmlcdtft_bytes_per_pixel(DMDRVI_GFX_PIXEL_FORMAT_ARGB1555), 2);
+    DMOD_TEST_EXPECT_EQ(dmlcdtft_bytes_per_pixel(DMDRVI_GFX_PIXEL_FORMAT_ARGB4444), 2);
+    DMOD_TEST_EXPECT_EQ(dmlcdtft_bytes_per_pixel(DMDRVI_GFX_PIXEL_FORMAT_COUNT), 0);
 }
 
 DMOD_TEST_STEP(dmlcdtft_color_to_pixel_converts)
 {
-    DMOD_TEST_EXPECT_EQ(dmlcdtft_color_to_pixel(dmlcdtft_pixel_format_rgb565, 0xFFFF0000), 0xF800);
-    DMOD_TEST_EXPECT_EQ(dmlcdtft_color_to_pixel(dmlcdtft_pixel_format_rgb565, 0xFF00FF00), 0x07E0);
-    DMOD_TEST_EXPECT_EQ(dmlcdtft_color_to_pixel(dmlcdtft_pixel_format_rgb565, 0xFF0000FF), 0x001F);
-    DMOD_TEST_EXPECT_EQ(dmlcdtft_color_to_pixel(dmlcdtft_pixel_format_rgb888, 0xFF123456), 0x123456);
-    DMOD_TEST_EXPECT_EQ(dmlcdtft_color_to_pixel(dmlcdtft_pixel_format_argb8888, 0x80123456), 0x80123456);
-    DMOD_TEST_EXPECT_EQ(dmlcdtft_color_to_pixel(dmlcdtft_pixel_format_argb1555, 0x80FF0000), 0xFC00);
-    DMOD_TEST_EXPECT_EQ(dmlcdtft_color_to_pixel(dmlcdtft_pixel_format_argb4444, 0xF0F0A050), 0xFFA5);
+    DMOD_TEST_EXPECT_EQ(dmlcdtft_color_to_pixel(DMDRVI_GFX_PIXEL_FORMAT_RGB565, 0xFFFF0000), 0xF800);
+    DMOD_TEST_EXPECT_EQ(dmlcdtft_color_to_pixel(DMDRVI_GFX_PIXEL_FORMAT_RGB565, 0xFF00FF00), 0x07E0);
+    DMOD_TEST_EXPECT_EQ(dmlcdtft_color_to_pixel(DMDRVI_GFX_PIXEL_FORMAT_RGB565, 0xFF0000FF), 0x001F);
+    DMOD_TEST_EXPECT_EQ(dmlcdtft_color_to_pixel(DMDRVI_GFX_PIXEL_FORMAT_RGB888, 0xFF123456), 0x123456);
+    DMOD_TEST_EXPECT_EQ(dmlcdtft_color_to_pixel(DMDRVI_GFX_PIXEL_FORMAT_ARGB8888, 0x80123456), 0x80123456);
+    DMOD_TEST_EXPECT_EQ(dmlcdtft_color_to_pixel(DMDRVI_GFX_PIXEL_FORMAT_ARGB1555, 0x80FF0000), 0xFC00);
+    DMOD_TEST_EXPECT_EQ(dmlcdtft_color_to_pixel(DMDRVI_GFX_PIXEL_FORMAT_ARGB4444, 0xF0F0A050), 0xFFA5);
 }
 
 /* ---- Through the dmdrvi DIF, the way dmdevfs calls the driver ---- */
@@ -166,16 +166,20 @@ DMOD_TEST_STEP(dmlcdtft_create_reports_geometry)
     DMOD_TEST_EXPECT_TRUE(device_open(&dev, TEST_INI));
     if (dev.handle != NULL)
     {
-        dmlcdtft_info_t info;
+        dmdrvi_gfx_info_t info;
         memset(&info, 0, sizeof(info));
-        DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, dmlcdtft_ioctl_cmd_get_info, &info), 0);
+        DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, DMDRVI_IOCTL_GFX_GET_INFO, &info), 0);
         DMOD_TEST_EXPECT_EQ(info.width, TEST_WIDTH);
         DMOD_TEST_EXPECT_EQ(info.height, TEST_HEIGHT);
         DMOD_TEST_EXPECT_EQ(info.bytes_per_pixel, 2);
         DMOD_TEST_EXPECT_EQ(info.stride, TEST_WIDTH * 2);
         DMOD_TEST_EXPECT_EQ(info.framebuffer_size, TEST_WIDTH * TEST_HEIGHT * 2);
         DMOD_TEST_EXPECT_EQ(info.buffer_count, 1);
-        DMOD_TEST_EXPECT_EQ(info.pixel_clock_hz, 9600000);
+
+        dmlcdtft_status_t status;
+        memset(&status, 0, sizeof(status));
+        DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, dmlcdtft_ioctl_cmd_get_status, &status), 0);
+        DMOD_TEST_EXPECT_EQ(status.pixel_clock_hz, 9600000);
 
         dmdrvi_stat_t st;
         DMOD_TEST_EXPECT_EQ(dev.drv.stat(dev.ctx, "/dev/dmlcdtft0", &st), 0);
@@ -222,7 +226,7 @@ DMOD_TEST_STEP(dmlcdtft_framebuffer_is_cleared_and_writable)
         DMOD_TEST_EXPECT_EQ(dev.drv.write(dev.ctx, dev.handle, line, sizeof(line), last_line), (dmdrvi_ssize_t)sizeof(line));
 
         uint16_t* fb = NULL;
-        DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, dmlcdtft_ioctl_cmd_get_framebuffer, &fb), 0);
+        DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, DMDRVI_IOCTL_GFX_GET_FRAMEBUFFER, &fb), 0);
         DMOD_TEST_EXPECT_NOT_NULL(fb);
         if (fb != NULL)
         {
@@ -245,11 +249,11 @@ DMOD_TEST_STEP(dmlcdtft_fill_rect_clips_to_screen)
     if (dev.handle != NULL)
     {
         /* Starts inside, reaches far past the bottom-right corner. */
-        dmlcdtft_fill_rect_t rect = { 12, 6, 100, 100, 0xFFFF0000 };
-        DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, dmlcdtft_ioctl_cmd_fill_rect, &rect), 0);
+        dmdrvi_gfx_fill_rect_t rect = { 12, 6, 100, 100, 0xFFFF0000 };
+        DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, DMDRVI_IOCTL_GFX_FILL_RECT, &rect), 0);
 
         uint16_t* fb = NULL;
-        dev.drv.ioctl(dev.ctx, dev.handle, dmlcdtft_ioctl_cmd_get_framebuffer, &fb);
+        dev.drv.ioctl(dev.ctx, dev.handle, DMDRVI_IOCTL_GFX_GET_FRAMEBUFFER, &fb);
         if (fb != NULL)
         {
             DMOD_TEST_EXPECT_EQ(fb[6 * TEST_WIDTH + 12], 0xF800);
@@ -267,15 +271,15 @@ DMOD_TEST_STEP(dmlcdtft_double_buffer_swaps)
     DMOD_TEST_EXPECT_TRUE(device_open(&dev, TEST_INI "double_buffer=on\n"));
     if (dev.handle != NULL)
     {
-        dmlcdtft_info_t info;
+        dmdrvi_gfx_info_t info;
         void* first = NULL;
         void* second = NULL;
-        dev.drv.ioctl(dev.ctx, dev.handle, dmlcdtft_ioctl_cmd_get_info, &info);
+        dev.drv.ioctl(dev.ctx, dev.handle, DMDRVI_IOCTL_GFX_GET_INFO, &info);
         DMOD_TEST_EXPECT_EQ(info.buffer_count, 2);
 
-        dev.drv.ioctl(dev.ctx, dev.handle, dmlcdtft_ioctl_cmd_get_framebuffer, &first);
-        DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, dmlcdtft_ioctl_cmd_swap_buffers, NULL), 0);
-        dev.drv.ioctl(dev.ctx, dev.handle, dmlcdtft_ioctl_cmd_get_framebuffer, &second);
+        dev.drv.ioctl(dev.ctx, dev.handle, DMDRVI_IOCTL_GFX_GET_FRAMEBUFFER, &first);
+        DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, DMDRVI_IOCTL_GFX_SWAP_BUFFERS, NULL), 0);
+        dev.drv.ioctl(dev.ctx, dev.handle, DMDRVI_IOCTL_GFX_GET_FRAMEBUFFER, &second);
         DMOD_TEST_EXPECT_NOT_NULL(first);
         DMOD_TEST_EXPECT_NOT_NULL(second);
         DMOD_TEST_EXPECT_TRUE(first != second);
@@ -285,7 +289,7 @@ DMOD_TEST_STEP(dmlcdtft_double_buffer_swaps)
     DMOD_TEST_EXPECT_TRUE(device_open(&dev, TEST_INI));
     if (dev.handle != NULL)
     {
-        DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, dmlcdtft_ioctl_cmd_swap_buffers, NULL), -ENOTSUP);
+        DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, DMDRVI_IOCTL_GFX_SWAP_BUFFERS, NULL), -ENOTSUP);
     }
     device_close(&dev);
 }
@@ -308,15 +312,18 @@ DMOD_TEST_STEP(dmlcdtft_ioctl_answers_only_its_own_command_range)
         DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, dmlcdtft_ioctl_cmd_max, probe), -ENOTTY);
 
         /* dmlcdtft's own commands, from DMDRVI_IOCTL_CUSTOM_BASE. */
-        DMOD_TEST_EXPECT_EQ((int)dmlcdtft_ioctl_cmd_get_info, DMDRVI_IOCTL_CUSTOM_BASE);
-        DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, dmlcdtft_ioctl_cmd_get_info, NULL), -EINVAL);
-        DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, dmlcdtft_ioctl_cmd_get_display_enabled, &enabled), 0);
+        DMOD_TEST_EXPECT_EQ((int)dmlcdtft_ioctl_cmd_get_status, DMDRVI_IOCTL_CUSTOM_BASE);
+        DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, dmlcdtft_ioctl_cmd_get_status, NULL), -EINVAL);
+
+        /* Standard graphics commands, from DMDRVI_IOCTL_GFX_GET_INFO. */
+        DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, DMDRVI_IOCTL_GFX_GET_INFO, NULL), -EINVAL);
+        DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, DMDRVI_IOCTL_GFX_GET_DISPLAY_ENABLED, &enabled), 0);
         DMOD_TEST_EXPECT_TRUE(enabled);
-        DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, dmlcdtft_ioctl_cmd_wait_vsync, NULL), 0);
+        DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, DMDRVI_IOCTL_GFX_WAIT_VSYNC, NULL), 0);
 
         enabled = false;
-        DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, dmlcdtft_ioctl_cmd_set_display_enabled, &enabled), 0);
-        DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, dmlcdtft_ioctl_cmd_wait_vsync, NULL), -EAGAIN);
+        DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, DMDRVI_IOCTL_GFX_SET_DISPLAY_ENABLED, &enabled), 0);
+        DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, DMDRVI_IOCTL_GFX_WAIT_VSYNC, NULL), -EAGAIN);
     }
     device_close(&dev);
 }

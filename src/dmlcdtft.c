@@ -15,7 +15,7 @@
  * in the port never touches memory that does not belong to them. */
 #define DMLCDTFT_FRAMEBUFFER_ALIGNMENT  64U
 
-/* Default timeout of dmlcdtft_ioctl_cmd_wait_vsync - a few frames even for
+/* Default timeout of DMDRVI_IOCTL_GFX_WAIT_VSYNC - a few frames even for
  * slow panels. */
 #define DMLCDTFT_VSYNC_TIMEOUT_MS       100U
 
@@ -63,20 +63,20 @@ static bool is_valid_context(dmdrvi_context_t context)
 
 /* ---- Pixel helpers ---- */
 
-dmod_dmlcdtft_api_declaration(1.0, uint8_t, _bytes_per_pixel, ( dmlcdtft_pixel_format_t format ))
+dmod_dmlcdtft_api_declaration(1.0, uint8_t, _bytes_per_pixel, ( dmdrvi_gfx_pixel_format_t format ))
 {
     switch (format)
     {
-        case dmlcdtft_pixel_format_argb8888: return 4;
-        case dmlcdtft_pixel_format_rgb888:   return 3;
-        case dmlcdtft_pixel_format_rgb565:
-        case dmlcdtft_pixel_format_argb1555:
-        case dmlcdtft_pixel_format_argb4444: return 2;
+        case DMDRVI_GFX_PIXEL_FORMAT_ARGB8888: return 4;
+        case DMDRVI_GFX_PIXEL_FORMAT_RGB888:   return 3;
+        case DMDRVI_GFX_PIXEL_FORMAT_RGB565:
+        case DMDRVI_GFX_PIXEL_FORMAT_ARGB1555:
+        case DMDRVI_GFX_PIXEL_FORMAT_ARGB4444: return 2;
         default:                             return 0;
     }
 }
 
-dmod_dmlcdtft_api_declaration(1.0, uint32_t, _color_to_pixel, ( dmlcdtft_pixel_format_t format, uint32_t argb ))
+dmod_dmlcdtft_api_declaration(1.0, uint32_t, _color_to_pixel, ( dmdrvi_gfx_pixel_format_t format, uint32_t argb ))
 {
     uint32_t a = (argb >> 24) & 0xFFU;
     uint32_t r = (argb >> 16) & 0xFFU;
@@ -85,11 +85,11 @@ dmod_dmlcdtft_api_declaration(1.0, uint32_t, _color_to_pixel, ( dmlcdtft_pixel_f
 
     switch (format)
     {
-        case dmlcdtft_pixel_format_argb8888: return argb;
-        case dmlcdtft_pixel_format_rgb888:   return argb & 0x00FFFFFFU;
-        case dmlcdtft_pixel_format_rgb565:   return ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
-        case dmlcdtft_pixel_format_argb1555: return ((a >> 7) << 15) | ((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3);
-        case dmlcdtft_pixel_format_argb4444: return ((a >> 4) << 12) | ((r >> 4) << 8) | ((g >> 4) << 4) | (b >> 4);
+        case DMDRVI_GFX_PIXEL_FORMAT_ARGB8888: return argb;
+        case DMDRVI_GFX_PIXEL_FORMAT_RGB888:   return argb & 0x00FFFFFFU;
+        case DMDRVI_GFX_PIXEL_FORMAT_RGB565:   return ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
+        case DMDRVI_GFX_PIXEL_FORMAT_ARGB1555: return ((a >> 7) << 15) | ((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3);
+        case DMDRVI_GFX_PIXEL_FORMAT_ARGB4444: return ((a >> 4) << 12) | ((r >> 4) << 8) | ((g >> 4) << 4) | (b >> 4);
         default:                             return 0;
     }
 }
@@ -116,7 +116,7 @@ static void store_pixels(uint8_t *dst, uint8_t bytes_per_pixel, uint32_t pixel, 
 
 /* Clips the rectangle to the screen and fills it in the drawing buffer: the
  * first line pixel by pixel, every further line as a copy of the first one. */
-static void fill_rect(dmdrvi_context_t context, const dmlcdtft_fill_rect_t *rect)
+static void fill_rect(dmdrvi_context_t context, const dmdrvi_gfx_fill_rect_t *rect)
 {
     const dmlcdtft_config_t *c = &context->config;
     if (rect->x >= c->width || rect->y >= c->height || rect->width == 0 || rect->height == 0)
@@ -140,16 +140,16 @@ static void fill_rect(dmdrvi_context_t context, const dmlcdtft_fill_rect_t *rect
 /* No table of name pointers here: the dmod loader does not relocate pointers
  * stored in initialized data, so string literals may only be referenced
  * from code. */
-static int string_to_pixel_format(const char *s, dmlcdtft_pixel_format_t *out_format)
+static int string_to_pixel_format(const char *s, dmdrvi_gfx_pixel_format_t *out_format)
 {
     if (s == NULL)
         return -EINVAL;
 
-    if (strcmp(s, "argb8888") == 0)      *out_format = dmlcdtft_pixel_format_argb8888;
-    else if (strcmp(s, "rgb888") == 0)   *out_format = dmlcdtft_pixel_format_rgb888;
-    else if (strcmp(s, "rgb565") == 0)   *out_format = dmlcdtft_pixel_format_rgb565;
-    else if (strcmp(s, "argb1555") == 0) *out_format = dmlcdtft_pixel_format_argb1555;
-    else if (strcmp(s, "argb4444") == 0) *out_format = dmlcdtft_pixel_format_argb4444;
+    if (strcmp(s, "argb8888") == 0)      *out_format = DMDRVI_GFX_PIXEL_FORMAT_ARGB8888;
+    else if (strcmp(s, "rgb888") == 0)   *out_format = DMDRVI_GFX_PIXEL_FORMAT_RGB888;
+    else if (strcmp(s, "rgb565") == 0)   *out_format = DMDRVI_GFX_PIXEL_FORMAT_RGB565;
+    else if (strcmp(s, "argb1555") == 0) *out_format = DMDRVI_GFX_PIXEL_FORMAT_ARGB1555;
+    else if (strcmp(s, "argb4444") == 0) *out_format = DMDRVI_GFX_PIXEL_FORMAT_ARGB4444;
     else return -EINVAL;
     return 0;
 }
@@ -381,7 +381,7 @@ static int allocate_framebuffers(dmdrvi_context_t context)
 static void clear_framebuffers(dmdrvi_context_t context)
 {
     uint8_t draw_index = context->draw_index;
-    dmlcdtft_fill_rect_t all = { 0, 0, context->config.width, context->config.height, context->config.clear_color };
+    dmdrvi_gfx_fill_rect_t all = { 0, 0, context->config.width, context->config.height, context->config.clear_color };
 
     for (uint8_t i = 0; i < 2; i++)
     {
@@ -433,7 +433,7 @@ static int start_display(dmdrvi_context_t context)
 
 /* ---- IOCTL helpers ---- */
 
-static void get_info(dmdrvi_context_t context, dmlcdtft_info_t *info)
+static void get_info(dmdrvi_context_t context, dmdrvi_gfx_info_t *info)
 {
     const dmlcdtft_config_t *c = &context->config;
 
@@ -444,8 +444,12 @@ static void get_info(dmdrvi_context_t context, dmlcdtft_info_t *info)
     info->stride           = context->stride;
     info->framebuffer_size = context->framebuffer_size;
     info->buffer_count     = c->double_buffer ? 2 : 1;
-    info->pixel_clock_hz   = dmlcdtft_port_get_pixel_clock(c->instance);
-    info->underrun_count   = dmlcdtft_port_get_underrun_count(c->instance);
+}
+
+static void get_status(dmdrvi_context_t context, dmlcdtft_status_t *status)
+{
+    status->pixel_clock_hz = dmlcdtft_port_get_pixel_clock(context->config.instance);
+    status->underrun_count = dmlcdtft_port_get_underrun_count(context->config.instance);
 }
 
 /* Shows the drawing buffer from the next frame on, and draws into the other
@@ -477,9 +481,12 @@ static int set_display_enabled(dmdrvi_context_t context, bool enabled)
 
 static bool ioctl_needs_arg(int command)
 {
-    return command >= (int)dmlcdtft_ioctl_cmd_get_info && command < (int)dmlcdtft_ioctl_cmd_max &&
-           command != (int)dmlcdtft_ioctl_cmd_swap_buffers &&
-           command != (int)dmlcdtft_ioctl_cmd_wait_vsync;
+    bool is_gfx = command >= (int)DMDRVI_IOCTL_GFX_GET_INFO && command <= (int)DMDRVI_IOCTL_GFX_GET_BACKLIGHT;
+    bool is_own = command >= (int)dmlcdtft_ioctl_cmd_get_status && command < (int)dmlcdtft_ioctl_cmd_max;
+
+    return (is_gfx || is_own) &&
+           command != (int)DMDRVI_IOCTL_GFX_SWAP_BUFFERS &&
+           command != (int)DMDRVI_IOCTL_GFX_WAIT_VSYNC;
 }
 
 /* Commands that change the controller or the panel. */
@@ -490,16 +497,16 @@ static int ioctl_control(dmdrvi_context_t context, int command, void *arg)
 
     switch (command)
     {
-        case dmlcdtft_ioctl_cmd_swap_buffers:
+        case DMDRVI_IOCTL_GFX_SWAP_BUFFERS:
             return swap_buffers(context);
-        case dmlcdtft_ioctl_cmd_wait_vsync:
+        case DMDRVI_IOCTL_GFX_WAIT_VSYNC:
             return dmlcdtft_port_wait_vsync(c->instance, (arg != NULL) ? *(const uint32_t *)arg : DMLCDTFT_VSYNC_TIMEOUT_MS);
-        case dmlcdtft_ioctl_cmd_fill_rect:
-            fill_rect(context, (const dmlcdtft_fill_rect_t *)arg);
+        case DMDRVI_IOCTL_GFX_FILL_RECT:
+            fill_rect(context, (const dmdrvi_gfx_fill_rect_t *)arg);
             return 0;
-        case dmlcdtft_ioctl_cmd_set_display_enabled:
+        case DMDRVI_IOCTL_GFX_SET_DISPLAY_ENABLED:
             return set_display_enabled(context, *(const bool *)arg);
-        case dmlcdtft_ioctl_cmd_set_backlight:
+        case DMDRVI_IOCTL_GFX_SET_BACKLIGHT:
             context->backlight_on = *(const bool *)arg;
             panel_pins_apply(context);
             return 0;
@@ -523,16 +530,19 @@ static int ioctl_query(dmdrvi_context_t context, int command, void *arg)
 {
     switch (command)
     {
-        case dmlcdtft_ioctl_cmd_get_info:
-            get_info(context, (dmlcdtft_info_t *)arg);
+        case DMDRVI_IOCTL_GFX_GET_INFO:
+            get_info(context, (dmdrvi_gfx_info_t *)arg);
             return 0;
-        case dmlcdtft_ioctl_cmd_get_framebuffer:
+        case dmlcdtft_ioctl_cmd_get_status:
+            get_status(context, (dmlcdtft_status_t *)arg);
+            return 0;
+        case DMDRVI_IOCTL_GFX_GET_FRAMEBUFFER:
             *(void **)arg = context->buffers[context->draw_index];
             return 0;
-        case dmlcdtft_ioctl_cmd_get_display_enabled:
+        case DMDRVI_IOCTL_GFX_GET_DISPLAY_ENABLED:
             *(bool *)arg = context->display_enabled;
             return 0;
-        case dmlcdtft_ioctl_cmd_get_backlight:
+        case DMDRVI_IOCTL_GFX_GET_BACKLIGHT:
             *(bool *)arg = context->backlight_on;
             return 0;
         case dmlcdtft_ioctl_cmd_get_background_color:

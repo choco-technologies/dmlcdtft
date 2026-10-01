@@ -253,7 +253,7 @@ static void configure_timing(const dmlcdtft_config_t *c)
 }
 
 /* Layer 1 covers the whole active area. Its pixel format values are the
- * LTDC PF[2:0] encoding (see dmlcdtft_pixel_format_t). */
+ * LTDC PF[2:0] encoding (see dmdrvi_gfx_pixel_format_t). */
 static void configure_layer(const dmlcdtft_config_t *c, const void *framebuffer, uint32_t stride)
 {
     volatile stm32_ltdc_layer_t *layer = STM32_LTDC_LAYER1;
@@ -272,17 +272,17 @@ static void configure_layer(const dmlcdtft_config_t *c, const void *framebuffer,
     layer->CR     = STM32_LTDC_LxCR_LEN;
 }
 
-static uint32_t bytes_per_pixel(dmlcdtft_pixel_format_t format)
+static uint32_t bytes_per_pixel(dmdrvi_gfx_pixel_format_t format)
 {
-    return (format == dmlcdtft_pixel_format_argb8888) ? 4U
-         : (format == dmlcdtft_pixel_format_rgb888)   ? 3U : 2U;
+    return (format == DMDRVI_GFX_PIXEL_FORMAT_ARGB8888) ? 4U
+         : (format == DMDRVI_GFX_PIXEL_FORMAT_RGB888)   ? 3U : 2U;
 }
 
 static int check_limits(const dmlcdtft_config_t *c)
 {
     uint32_t stride = (uint32_t)c->width * bytes_per_pixel(c->pixel_format);
 
-    if (c->pixel_format >= dmlcdtft_pixel_format_count || stride + 3U > STM32_LTDC_CFBLL_MAX ||
+    if (c->pixel_format >= DMDRVI_GFX_PIXEL_FORMAT_COUNT || stride + 3U > STM32_LTDC_CFBLL_MAX ||
         c->height > STM32_LTDC_CFBLNBR_MAX)
     {
         DMOD_LOG_ERROR("LTDC: unsupported framebuffer geometry %ux%u\n", c->width, c->height);
