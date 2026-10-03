@@ -21,3 +21,7 @@ looking at the panel: the rate must equal
 `pixel_clock / ((hsync + hbp + width + hfp) * (vsync + vbp + height + vfp))`
 - 59.3 Hz on the STM32F746G-DISCO. In Renode it reports the emulator's fixed
 repaint rate (`ltdc FramesPerVirtualSecond`, 25 by default) instead.
+
+What `bars`, `gradient`, `fill` and `selftest` draw goes on the screen with
+`DMDRVI_IOCTL_GFX_PRESENT` - with `double_buffer=on` the drawing buffer is
+not the one shown until then.

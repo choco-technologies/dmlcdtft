@@ -26,7 +26,7 @@ its own section.
 | `background_color` | `0xRRGGBB` | `0x000000` | Shown where the layer is transparent |
 | `alpha` | integer | 255 | Constant opacity of the framebuffer layer |
 | `clear_color` | `0xAARRGGBB` | `0xFF000000` | The framebuffer is filled with it at start |
-| `double_buffer` | `on`/`off` | `off` | Allocate a second framebuffer for `swap_buffers` |
+| `double_buffer` | `on`/`off` | `off` | Allocate a second framebuffer: `DMDRVI_IOCTL_GFX_PRESENT` / `SWAP_BUFFERS` switch them in the vertical blank |
 | `display` | `on`/`off` | `on` | Start with the display enabled |
 | `backlight` | `on`/`off` | `on` | Start with the backlight on |
 | `display_enable_active_level` | `high`/`low` | `high` | Level of the `display_enable` pin when on |

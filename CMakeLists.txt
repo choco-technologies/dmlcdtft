@@ -75,7 +75,7 @@ dmod_add_library(${DMOD_MODULE_NAME} ${DMOD_MODULE_VERSION}
 #          friends driven through Dmod_Ioctl() on their nodes, with the
 #          ioctl numbering of dmgpio >= 1.1 (same as dmspi's chip select).
 dmod_link_modules(${DMOD_MODULE_NAME}
-    dmdrvi@>=2.2
+    dmdrvi@>=2.5
     dmini
     dmgpio@>=1.1
 )
