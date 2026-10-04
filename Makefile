@@ -24,7 +24,7 @@ DMOD_MODULE_VERSION=0.1
 DMOD_AUTHOR_NAME=Patryk Kubiak
 
 # The list of C sources
-DMOD_CSOURCES=src/dmlcdtft.c
+DMOD_CSOURCES=src/dmlcdtft.c src/dmlcdtft_splash.c
 
 # The list of C++ sources
 DMOD_CXXSOURCES=

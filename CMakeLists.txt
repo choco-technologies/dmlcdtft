@@ -65,6 +65,7 @@ set(DMOD_DIF_IMPLS          )
 dmod_add_library(${DMOD_MODULE_NAME} ${DMOD_MODULE_VERSION}
     # List of source files - can include C and C++ files
     src/dmlcdtft.c
+    src/dmlcdtft_splash.c
 )
 
 # dmdrvi:  the driver interface dmlcdtft implements (src/dmlcdtft.c); its

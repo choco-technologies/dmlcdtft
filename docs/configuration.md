@@ -25,7 +25,8 @@ its own section.
 | `pclk_inverted` | `on`/`off` | `off` | Sample data on the falling pixel clock edge |
 | `background_color` | `0xRRGGBB` | `0x000000` | Shown where the layer is transparent |
 | `alpha` | integer | 255 | Constant opacity of the framebuffer layer |
-| `clear_color` | `0xAARRGGBB` | `0xFF000000` | The framebuffer is filled with it at start |
+| `clear_color` | `0xAARRGGBB` | `0xFF000000` | The framebuffer is filled with it at start - the background of the splash screen |
+| `splash_logo` | path | `$SPLASH_LOGO` | Splash logo (`.dmvir`) drawn in the middle of the screen at start; `none`: no logo. See [Splash screen](#splash-screen) |
 | `double_buffer` | `on`/`off` | `off` | Allocate a second framebuffer: `DMDRVI_IOCTL_GFX_PRESENT` / `SWAP_BUFFERS` switch them in the vertical blank |
 | `display` | `on`/`off` | `on` | Start with the display enabled |
 | `backlight` | `on`/`off` | `on` | Start with the backlight on |
@@ -45,6 +46,36 @@ boundary. A 480x272 RGB565 buffer is 255 KiB - more than the internal heap of
 an STM32F746 has left - so it lands in external SDRAM registered by
 [dmfmc](https://github.com/choco-technologies/dmfmc) with `heap_usage=heap`.
 Give the display a `driver_order` after the SDRAM's.
+
+## Splash screen
+
+The display shows a splash screen from its first frame on: the framebuffers
+are filled with `clear_color` and a logo is drawn in the middle (cropped when
+it is larger than the screen), before the controller is started - so the
+panel never shows a white or garbage screen while the system boots.
+
+The logo is a `.dmvir` file: an *uncompressed* `.dmvi` (dmview's image
+format, see dmview's `docs/image-format.md`) - its 56-byte header followed by
+the raw pixels, nothing to decode or unpack. `RGB565`, `RGB565A8` and
+`ARGB8888` images are drawn; transparent pixels are blended over
+`clear_color`. The file is read row by row, so only a few lines of it are in
+memory at a time.
+
+Where the logo comes from:
+
+1. the `splash_logo` key, if set (`none` turns the logo off);
+2. else the `SPLASH_LOGO` environment variable - dmod-boot sets it to
+   `/eviews/splash_logo.dmvir` (its `DMBOOT_SPLASH_LOGO_PATH` option) and
+   puts the logo picked by the board configuration there.
+
+No logo configured, or no file at the path: just `clear_color`. A file that
+is not a logo the driver can draw (e.g. a packed `.dmvi`) is logged and
+ignored.
+
+Make a `.dmvir` from an image with [todmvi](https://github.com/choco-technologies/todmvi)
+(`-f rgb565a8`) and unpack it with dmod-boot's `scripts/dmvi_to_dmvir.py`
+(or convert with `-c none` - a `.dmvi` that is not packed already is a
+`.dmvir`).
 
 ## Panel pins
 

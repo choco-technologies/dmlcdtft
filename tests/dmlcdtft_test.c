@@ -387,3 +387,143 @@ DMOD_TEST_STEP(dmlcdtft_ioctl_answers_only_its_own_command_range)
     }
     device_close(&dev);
 }
+
+/* ---- Splash logo ---- */
+
+#define TEST_LOGO_PATH      "dmlcdtft_test_logo.dmvir"
+#define TEST_LOGO_WIDTH     4
+#define TEST_LOGO_HEIGHT    2
+
+static void put_le16(uint8_t* p, uint16_t v) { p[0] = (uint8_t)v; p[1] = (uint8_t)(v >> 8); }
+static void put_le32(uint8_t* p, uint32_t v) { put_le16(p, (uint16_t)v); put_le16(p + 2, (uint16_t)(v >> 16)); }
+
+/*
+ * A 4x2 RGB565A8 .dmvir: row 0 red, green, blue (transparent), white (half
+ * transparent); row 1 red. `compression` makes it a packed .dmvi instead.
+ */
+static bool write_test_logo(const char* compression)
+{
+    uint8_t file[56 + 4 * 2 * 2 + 4 * 2];
+    const uint16_t colors[8] = { 0xF800, 0x07E0, 0x001F, 0xFFFF, 0xF800, 0xF800, 0xF800, 0xF800 };
+    const uint8_t alpha[8] = { 255, 255, 0, 128, 255, 255, 255, 255 };
+
+    memset(file, 0, sizeof(file));
+    memcpy(file, "DMVI", 4);
+    put_le16(&file[6], 1);
+    put_le32(&file[8], sizeof(file));
+    put_le16(&file[12], TEST_LOGO_WIDTH);
+    put_le16(&file[14], TEST_LOGO_HEIGHT);
+    file[16] = 3;                                   /* RGB565A8 */
+    put_le32(&file[20], TEST_LOGO_WIDTH * 2);       /* stride */
+    put_le32(&file[24], 56);                        /* pixels */
+    put_le32(&file[28], TEST_LOGO_WIDTH);           /* alpha_stride */
+    put_le32(&file[32], 56 + 16);                   /* alpha */
+    strcpy((char*)&file[40], compression);
+    put_le32(&file[52], sizeof(file) - 56);
+    for (int i = 0; i < 8; i++)
+    {
+        put_le16(&file[56 + 2 * i], colors[i]);
+        file[56 + 16 + i] = alpha[i];
+    }
+
+    void* fp = Dmod_FileOpen(TEST_LOGO_PATH, "wb");
+    if (fp == NULL)
+    {
+        return false;
+    }
+    bool written = Dmod_FileWrite(file, 1, sizeof(file), fp) == sizeof(file);
+    Dmod_FileClose(fp);
+    return written;
+}
+
+/* The 16x8 screen with the 4x2 logo in the middle (x 6..9, y 3..4) on blue. */
+static void expect_test_logo(const uint16_t* fb)
+{
+    DMOD_TEST_EXPECT_EQ(fb[3 * TEST_WIDTH + 6], 0xF800);
+    DMOD_TEST_EXPECT_EQ(fb[3 * TEST_WIDTH + 7], 0x07E0);
+    DMOD_TEST_EXPECT_EQ(fb[3 * TEST_WIDTH + 8], 0x001F);    /* Transparent: clear_color */
+    DMOD_TEST_EXPECT_EQ(fb[3 * TEST_WIDTH + 9], 0x841F);    /* White half over blue */
+    DMOD_TEST_EXPECT_EQ(fb[4 * TEST_WIDTH + 9], 0xF800);
+    DMOD_TEST_EXPECT_EQ(fb[2 * TEST_WIDTH + 6], 0x001F);
+    DMOD_TEST_EXPECT_EQ(fb[4 * TEST_WIDTH + 10], 0x001F);
+}
+
+static uint16_t* get_framebuffer(device_t* dev)
+{
+    uint16_t* fb = NULL;
+    dev->drv.ioctl(dev->ctx, dev->handle, DMDRVI_IOCTL_GFX_GET_FRAMEBUFFER, &fb);
+    return fb;
+}
+
+DMOD_TEST_STEP(dmlcdtft_splash_logo_is_drawn_centered)
+{
+    device_t dev;
+    DMOD_TEST_EXPECT_TRUE(write_test_logo(""));
+    DMOD_TEST_EXPECT_TRUE(device_open(&dev, TEST_INI "double_buffer=on\nsplash_logo=" TEST_LOGO_PATH "\n"));
+    if (dev.handle != NULL)
+    {
+        /* Both buffers start with the splash */
+        uint16_t* fb = get_framebuffer(&dev);
+        DMOD_TEST_EXPECT_NOT_NULL(fb);
+        if (fb != NULL)
+            expect_test_logo(fb);
+        dev.drv.ioctl(dev.ctx, dev.handle, DMDRVI_IOCTL_GFX_SWAP_BUFFERS, NULL);
+        fb = get_framebuffer(&dev);
+        DMOD_TEST_EXPECT_NOT_NULL(fb);
+        if (fb != NULL)
+            expect_test_logo(fb);
+    }
+    device_close(&dev);
+}
+
+DMOD_TEST_STEP(dmlcdtft_splash_logo_comes_from_the_environment)
+{
+    device_t dev;
+    DMOD_TEST_EXPECT_TRUE(write_test_logo(""));
+    Dmod_SetEnv("SPLASH_LOGO", TEST_LOGO_PATH, 1);
+    DMOD_TEST_EXPECT_TRUE(device_open(&dev, TEST_INI));
+    if (dev.handle != NULL)
+    {
+        uint16_t* fb = get_framebuffer(&dev);
+        if (fb != NULL)
+            expect_test_logo(fb);
+    }
+    device_close(&dev);
+
+    /* splash_logo=none: no logo, whatever the environment says */
+    DMOD_TEST_EXPECT_TRUE(device_open(&dev, TEST_INI "splash_logo=none\n"));
+    if (dev.handle != NULL)
+    {
+        uint16_t* fb = get_framebuffer(&dev);
+        if (fb != NULL)
+            DMOD_TEST_EXPECT_EQ(fb[3 * TEST_WIDTH + 6], 0x001F);
+    }
+    device_close(&dev);
+    Dmod_SetEnv("SPLASH_LOGO", "", 1);
+}
+
+DMOD_TEST_STEP(dmlcdtft_splash_logo_problems_leave_a_cleared_screen)
+{
+    device_t dev;
+
+    /* A missing logo, and a packed .dmvi in place of a .dmvir */
+    DMOD_TEST_EXPECT_TRUE(device_open(&dev, TEST_INI "splash_logo=no_such_logo.dmvir\n"));
+    if (dev.handle != NULL)
+    {
+        uint16_t* fb = get_framebuffer(&dev);
+        if (fb != NULL)
+            DMOD_TEST_EXPECT_EQ(fb[3 * TEST_WIDTH + 6], 0x001F);
+    }
+    device_close(&dev);
+
+    DMOD_TEST_EXPECT_TRUE(write_test_logo("fastlz"));
+    DMOD_TEST_EXPECT_TRUE(device_open(&dev, TEST_INI "splash_logo=" TEST_LOGO_PATH "\n"));
+    if (dev.handle != NULL)
+    {
+        uint16_t* fb = get_framebuffer(&dev);
+        if (fb != NULL)
+            DMOD_TEST_EXPECT_EQ(fb[3 * TEST_WIDTH + 6], 0x001F);
+    }
+    device_close(&dev);
+    Dmod_FileRemove(TEST_LOGO_PATH);
+}
