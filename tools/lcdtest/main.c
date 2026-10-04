@@ -1,6 +1,7 @@
 #include "dmod.h"
 #include "dmosi.h"
 #include "dmlcdtft.h"
+#include <errno.h>
 #include <string.h>
 
 /**
@@ -259,19 +260,30 @@ static int cmd_anim(display_t *d, uint32_t frames)
     return ret;
 }
 
+/* What was drawn into the drawing buffer goes on the screen - with two
+ * buffers that is a switch; a driver without PRESENT has the drawing on the
+ * screen already. */
+static int present(display_t *d, int ret)
+{
+    if (ret != 0)
+        return ret;
+    ret = Dmod_Ioctl(d->fp, DMDRVI_IOCTL_GFX_PRESENT, NULL);
+    return (ret == -ENOTTY) ? 0 : ret;
+}
+
 static int run_command(display_t *d, int argc, char *argv[])
 {
     const char *cmd = (argc > 0) ? argv[0] : "bars";
     const char *arg = (argc > 1) ? argv[1] : NULL;
 
     if (strcmp(cmd, "info") == 0)       return cmd_info(d);
-    if (strcmp(cmd, "bars") == 0)       return cmd_bars(d);
-    if (strcmp(cmd, "gradient") == 0)   return cmd_gradient(d);
-    if (strcmp(cmd, "selftest") == 0)   return cmd_selftest(d);
+    if (strcmp(cmd, "bars") == 0)       return present(d, cmd_bars(d));
+    if (strcmp(cmd, "gradient") == 0)   return present(d, cmd_gradient(d));
+    if (strcmp(cmd, "selftest") == 0)   return present(d, cmd_selftest(d));
     if (strcmp(cmd, "vsync") == 0)      return cmd_vsync(d, parse_count(arg, 60));
     if (strcmp(cmd, "anim") == 0)       return cmd_anim(d, parse_count(arg, 300));
     if (strcmp(cmd, "fill") == 0 && arg != NULL)
-        return fill(d, 0, 0, d->info.width, d->info.height, parse_hex(arg));
+        return present(d, fill(d, 0, 0, d->info.width, d->info.height, parse_hex(arg)));
 
     DMOD_LOG_ERROR("lcdtest: unknown command '%s'\n", cmd);
     return -1;

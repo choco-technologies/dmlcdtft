@@ -468,6 +468,44 @@ static int swap_buffers(dmdrvi_context_t context)
     return ret;
 }
 
+/*
+ * DMDRVI_IOCTL_GFX_PRESENT: makes `area` (NULL: everything) of the drawing
+ * buffer visible. Double buffered, the drawing buffer is shown from the next
+ * frame on - set_framebuffer() waits for the reload in the vertical blank -
+ * and only then `area` is copied into the other buffer, which is no longer
+ * scanned out: it becomes the drawing buffer, as the screen is.
+ */
+static int present(dmdrvi_context_t context, const dmdrvi_gfx_rect_t *area)
+{
+    const dmlcdtft_config_t *c = &context->config;
+    uint32_t x = 0, y = 0, w = c->width, h = c->height;
+    if (area != NULL)
+    {
+        if (area->x >= c->width || area->y >= c->height || area->width == 0 || area->height == 0)
+            return 0;                       /* Nothing drawn */
+        x = area->x;
+        y = area->y;
+        w = (area->width > c->width - x) ? c->width - x : area->width;
+        h = (area->height > c->height - y) ? c->height - y : area->height;
+    }
+
+    uint32_t line_bytes = w * context->bytes_per_pixel;
+    uint32_t offset = y * context->stride + x * context->bytes_per_pixel;
+    uint8_t *drawn = context->buffers[context->draw_index];
+    dmlcdtft_port_sync(c->instance, drawn + offset, (h - 1U) * context->stride + line_bytes);
+    if (!c->double_buffer)
+        return 0;
+
+    int ret = dmlcdtft_port_set_framebuffer(c->instance, drawn, true);
+    if (ret != 0)
+        return ret;
+    context->draw_index ^= 1U;
+    uint8_t *next = context->buffers[context->draw_index];
+    for (uint32_t line = 0; line < h; line++)
+        memcpy(next + offset + line * context->stride, drawn + offset + line * context->stride, line_bytes);
+    return 0;
+}
+
 static int set_display_enabled(dmdrvi_context_t context, bool enabled)
 {
     int ret = dmlcdtft_port_set_enabled(context->config.instance, enabled);
@@ -499,6 +537,8 @@ static int ioctl_control(dmdrvi_context_t context, int command, void *arg)
     {
         case DMDRVI_IOCTL_GFX_SWAP_BUFFERS:
             return swap_buffers(context);
+        case DMDRVI_IOCTL_GFX_PRESENT:
+            return present(context, (const dmdrvi_gfx_rect_t *)arg);
         case DMDRVI_IOCTL_GFX_WAIT_VSYNC:
             return dmlcdtft_port_wait_vsync(c->instance, (arg != NULL) ? *(const uint32_t *)arg : DMLCDTFT_VSYNC_TIMEOUT_MS);
         case DMDRVI_IOCTL_GFX_FILL_RECT:

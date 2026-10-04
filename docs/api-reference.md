@@ -33,6 +33,7 @@ including the standard dmdrvi network/block/monitor commands, returns `-ENOTTY`.
 | `DMDRVI_IOCTL_GFX_GET_INFO` | `dmdrvi_gfx_info_t*` | Resolution, pixel format, stride, buffer count |
 | `DMDRVI_IOCTL_GFX_GET_FRAMEBUFFER` | `void**` | Address of the drawing buffer, for direct drawing (call `flush` afterwards on a cached core) |
 | `DMDRVI_IOCTL_GFX_SWAP_BUFFERS` | `NULL` | `double_buffer=on` only: show the drawing buffer from the next frame on (blocks until the switch), then draw into the other one. `-ENOTSUP` with a single buffer |
+| `DMDRVI_IOCTL_GFX_PRESENT` | `const dmdrvi_gfx_rect_t*` area drawn, or `NULL` (everything) | Make the drawing visible. `double_buffer=on`: show the drawing buffer from the next frame on (blocks until the switch), then copy the area into the other buffer, which becomes the drawing buffer - ask `GET_FRAMEBUFFER` again. Single buffer: write the area back from the data cache |
 | `DMDRVI_IOCTL_GFX_WAIT_VSYNC` | `const uint32_t*` timeout in ms, or `NULL` (100 ms) | Block until the next vertical blanking. `-ETIMEDOUT`, or `-EAGAIN` while the display is disabled |
 | `DMDRVI_IOCTL_GFX_FILL_RECT` | `const dmdrvi_gfx_fill_rect_t*` | Fill a rectangle (clipped to the screen) with a `0xAARRGGBB` color |
 | `DMDRVI_IOCTL_GFX_SET_DISPLAY_ENABLED` / `get_` | `bool*` | Controller scan-out and the `display_enable` pin |

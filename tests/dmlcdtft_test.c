@@ -294,6 +294,66 @@ DMOD_TEST_STEP(dmlcdtft_double_buffer_swaps)
     device_close(&dev);
 }
 
+DMOD_TEST_STEP(dmlcdtft_present_keeps_both_buffers_current)
+{
+    device_t dev;
+    DMOD_TEST_EXPECT_TRUE(device_open(&dev, TEST_INI "double_buffer=on\n"));
+    if (dev.handle != NULL)
+    {
+        uint16_t* drawn = NULL;
+        uint16_t* next = NULL;
+        dev.drv.ioctl(dev.ctx, dev.handle, DMDRVI_IOCTL_GFX_GET_FRAMEBUFFER, &drawn);
+        dmdrvi_gfx_fill_rect_t fill = { 0, 0, TEST_WIDTH, TEST_HEIGHT, 0xFF0000FFu };
+        DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, DMDRVI_IOCTL_GFX_FILL_RECT, &fill), 0);
+        DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, DMDRVI_IOCTL_GFX_PRESENT, NULL), 0);
+
+        /* The other buffer is the drawing buffer now - a copy of the screen */
+        dev.drv.ioctl(dev.ctx, dev.handle, DMDRVI_IOCTL_GFX_GET_FRAMEBUFFER, &next);
+        DMOD_TEST_EXPECT_NOT_NULL(next);
+        DMOD_TEST_EXPECT_TRUE(next != drawn);
+        if (next != NULL)
+        {
+            DMOD_TEST_EXPECT_EQ(next[0], 0x001F);
+            DMOD_TEST_EXPECT_EQ(next[TEST_HEIGHT * TEST_WIDTH - 1], 0x001F);
+
+            /* Only the area drawn is copied over: a red square ... */
+            dmdrvi_gfx_fill_rect_t red = { 2, 3, 4, 2, 0xFFFF0000u };
+            dmdrvi_gfx_rect_t area = { 2, 3, 4, 2 };
+            dev.drv.ioctl(dev.ctx, dev.handle, DMDRVI_IOCTL_GFX_FILL_RECT, &red);
+            next[0] = 0x07E0;                       /* Drawn but not presented: not copied */
+            DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, DMDRVI_IOCTL_GFX_PRESENT, &area), 0);
+            uint16_t* again = NULL;
+            dev.drv.ioctl(dev.ctx, dev.handle, DMDRVI_IOCTL_GFX_GET_FRAMEBUFFER, &again);
+            DMOD_TEST_EXPECT_TRUE(again == drawn);
+            DMOD_TEST_EXPECT_EQ(again[3 * TEST_WIDTH + 2], 0xF800);
+            DMOD_TEST_EXPECT_EQ(again[4 * TEST_WIDTH + 5], 0xF800);
+            DMOD_TEST_EXPECT_EQ(again[3 * TEST_WIDTH + 6], 0x001F);
+            DMOD_TEST_EXPECT_EQ(again[0], 0x001F);
+        }
+
+        /* An area off the screen: nothing drawn, nothing switched */
+        dmdrvi_gfx_rect_t off = { TEST_WIDTH, 0, 4, 4 };
+        uint16_t* same = NULL;
+        DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, DMDRVI_IOCTL_GFX_PRESENT, &off), 0);
+        dev.drv.ioctl(dev.ctx, dev.handle, DMDRVI_IOCTL_GFX_GET_FRAMEBUFFER, &same);
+        DMOD_TEST_EXPECT_TRUE(same == drawn);
+    }
+    device_close(&dev);
+
+    /* Single buffered: PRESENT makes the drawing visible, the buffer stays */
+    DMOD_TEST_EXPECT_TRUE(device_open(&dev, TEST_INI));
+    if (dev.handle != NULL)
+    {
+        void* before = NULL;
+        void* after = NULL;
+        dev.drv.ioctl(dev.ctx, dev.handle, DMDRVI_IOCTL_GFX_GET_FRAMEBUFFER, &before);
+        DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, DMDRVI_IOCTL_GFX_PRESENT, NULL), 0);
+        dev.drv.ioctl(dev.ctx, dev.handle, DMDRVI_IOCTL_GFX_GET_FRAMEBUFFER, &after);
+        DMOD_TEST_EXPECT_TRUE(before == after);
+    }
+    device_close(&dev);
+}
+
 DMOD_TEST_STEP(dmlcdtft_ioctl_answers_only_its_own_command_range)
 {
     device_t dev;

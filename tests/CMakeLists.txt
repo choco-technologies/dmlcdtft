@@ -17,7 +17,7 @@ target_link_libraries(${DMOD_MODULE_NAME} dmlcdtft_if)
 # dmdrvi: the DIF the tests call dmlcdtft through (like dmdevfs); dmini: its
 # configuration.
 dmod_link_modules(${DMOD_MODULE_NAME}
-    dmdrvi@>=2.2
+    dmdrvi@>=2.5
     dmini
 )
 

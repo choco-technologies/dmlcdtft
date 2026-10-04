@@ -33,6 +33,7 @@ typedef struct
     uint32_t            gcr;                /* Shadow of LTDC_GCR - written, never read back */
     uint32_t            ier;                /* Shadow of LTDC_IER - only changed from thread context */
     volatile uint32_t   underrun_count;
+    bool                reload_warned;      /* The missing vertical blank reload was reported */
     dmosi_semaphore_t   event_sem;          /* Posted from the ISR on line/reload events */
 } ltdc_state_t;
 
@@ -409,7 +410,18 @@ dmod_dmlcdtft_port_api_declaration(1.0, int, _set_framebuffer, ( dmlcdtft_instan
 
     STM32_LTDC->ICR = STM32_LTDC_IT_RELOAD;
     STM32_LTDC->SRCR = STM32_LTDC_SRCR_VBR;
-    return wait_for_event(STM32_LTDC_IT_RELOAD, STM32_LTDC_RELOAD_TIMEOUT_MS);
+    if (wait_for_event(STM32_LTDC_IT_RELOAD, STM32_LTDC_RELOAD_TIMEOUT_MS) == 0)
+        return 0;
+
+    /* No reload at the blanking in time (a controller model without it, or
+     * scan-out stopped): reload at once - the new buffer is shown anyway */
+    if (!s_ltdc.reload_warned)
+    {
+        DMOD_LOG_WARN("dmlcdtft_port: no vertical blank reload, switching buffers at once\n");
+        s_ltdc.reload_warned = true;
+    }
+    STM32_LTDC->SRCR = STM32_LTDC_SRCR_IMR;
+    return 0;
 }
 
 dmod_dmlcdtft_port_api_declaration(1.0, int, _set_enabled, ( dmlcdtft_instance_t instance, bool enabled ))

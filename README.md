@@ -16,7 +16,9 @@ display as `/dev/dmlcdtft0`:
 - the device file *is* the framebuffer - `write()`/`read()` at a byte offset,
   like a Linux `/dev/fb0`,
 - `ioctl` commands for geometry, direct framebuffer access, rectangle fill,
-  vsync, double-buffer swapping, display/backlight on/off, background color
+  vsync, double-buffer swapping and presenting (`DMDRVI_IOCTL_GFX_PRESENT`:
+  the frame shown at the vertical blank, the area drawn copied into the next
+  drawing buffer), display/backlight on/off, background color
   and layer alpha,
 - RGB565, RGB888, ARGB8888, ARGB1555 and ARGB4444,
 - the pixel clock is generated at run time from PLLSAI (closest achievable
