@@ -503,6 +503,9 @@ static int present(dmdrvi_context_t context, const dmdrvi_gfx_rect_t *area)
     uint8_t *next = context->buffers[context->draw_index];
     for (uint32_t line = 0; line < h; line++)
         memcpy(next + offset + line * context->stride, drawn + offset + line * context->stride, line_bytes);
+    /* The copy is shown by the next PRESENT, which syncs only what is drawn
+     * then - with a write-back data cache it must reach the memory now */
+    dmlcdtft_port_sync(c->instance, next + offset, (h - 1U) * context->stride + line_bytes);
     return 0;
 }
 
