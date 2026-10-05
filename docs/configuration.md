@@ -45,7 +45,9 @@ The framebuffer (`width * height * bytes_per_pixel`, twice with
 boundary. A 480x272 RGB565 buffer is 255 KiB - more than the internal heap of
 an STM32F746 has left - so it lands in external SDRAM registered by
 [dmfmc](https://github.com/choco-technologies/dmfmc) with `heap_usage=heap`.
-Give the display a `driver_order` after the SDRAM's.
+Give the display a `driver_order` after the SDRAM's - right after it, so the
+splash screen comes up as soon as the framebuffer can be allocated instead of
+after every other driver of the board.
 
 ## Splash screen
 
@@ -95,7 +97,7 @@ See [`configs/board/stm32f746g-disco/lcd.ini`](../configs/board/stm32f746g-disco
 ```ini
 [lcd]
 driver_name=dmlcdtft
-driver_order=6
+driver_order=-6
 friends_group=lcd
 width=480
 height=272
@@ -110,7 +112,7 @@ vfront_porch=2
 
 [lcd_backlight]
 driver_name=dmgpio
-driver_order=6
+driver_order=-6
 friends_group=lcd
 friend_role=backlight
 pin=PK3
