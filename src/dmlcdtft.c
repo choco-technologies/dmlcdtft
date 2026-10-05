@@ -2,6 +2,7 @@
 #include "dmod.h"
 #include "dmlcdtft.h"
 #include "dmlcdtft_port.h"
+#include "dmlcdtft_splash.h"
 #include "dmdrvi.h"
 #include "dmini.h"
 #include "dmgpio_types.h"
@@ -14,6 +15,11 @@
 /* Framebuffers are allocated on a cache-line boundary, so cache maintenance
  * in the port never touches memory that does not belong to them. */
 #define DMLCDTFT_FRAMEBUFFER_ALIGNMENT  64U
+
+/* Environment variable with the path of the splash logo (set by dmod-boot,
+ * see DMBOOT_SPLASH_LOGO_PATH there); the splash_logo key of the
+ * configuration takes precedence over it. */
+#define DMLCDTFT_SPLASH_LOGO_ENV        "SPLASH_LOGO"
 
 /* Default timeout of DMDRVI_IOCTL_GFX_WAIT_VSYNC - a few frames even for
  * slow panels. */
@@ -393,9 +399,57 @@ static void clear_framebuffers(dmdrvi_context_t context)
     context->draw_index = draw_index;
 }
 
+/* ---- Splash screen ---- */
+
+/* Path of the splash logo: the splash_logo key of the configuration, else the
+ * SPLASH_LOGO environment variable; NULL: no logo ("none" turns it off). */
+static const char *splash_logo_path(dmini_context_t ini)
+{
+    const char *path = dmini_get_string(ini, NULL, "splash_logo", NULL);
+    if (path == NULL)
+        path = Dmod_GetEnv(DMLCDTFT_SPLASH_LOGO_ENV);
+    if (path == NULL || path[0] == '\0' || strcmp(path, "none") == 0)
+        return NULL;
+    return path;
+}
+
+/* Draws the splash logo in the middle of the cleared framebuffers, so the
+ * panel shows it from the first frame on - clear_color is its background. */
+static void show_splash(dmdrvi_context_t context, const char *logo_path)
+{
+    const dmlcdtft_config_t *c = &context->config;
+    if (logo_path == NULL)
+        return;
+
+    dmlcdtft_splash_target_t target = {
+        context->buffers[0], context->stride, c->width, c->height, c->pixel_format, c->clear_color & 0x00FFFFFFU
+    };
+    int ret = dmlcdtft_splash_draw(logo_path, &target);
+    if (ret == -ENOENT)
+    {
+        DMOD_LOG_INFO("No splash logo at %s\n", logo_path);
+        return;
+    }
+    if (ret != 0)
+    {
+        DMOD_LOG_ERROR("Cannot show splash logo %s (%d)\n", logo_path, ret);
+        clear_framebuffers(context);
+        return;
+    }
+
+    /* Every buffer starts with the splash, whichever is shown first */
+    if (context->buffers[1] != NULL)
+        memcpy(context->buffers[1], context->buffers[0], context->framebuffer_size);
+    for (int i = 0; i < 2; i++)
+    {
+        if (context->buffers[i] != NULL)
+            dmlcdtft_port_sync(c->instance, context->buffers[i], context->framebuffer_size);
+    }
+}
+
 /* ---- Controller bring-up ---- */
 
-static int start_display(dmdrvi_context_t context)
+static int start_display(dmdrvi_context_t context, const char *logo_path)
 {
     const dmlcdtft_config_t *c = &context->config;
 
@@ -413,6 +467,7 @@ static int start_display(dmdrvi_context_t context)
     /* With double buffering buffer 0 is shown first and drawing goes to 1. */
     context->draw_index = c->double_buffer ? 1 : 0;
     clear_framebuffers(context);
+    show_splash(context, logo_path);
 
     ret = dmlcdtft_port_init(c->instance, c, context->buffers[0]);
     if (ret == 0 && !context->display_enabled)
@@ -630,7 +685,7 @@ dmod_dmdrvi_dif_api_declaration(2.0, dmlcdtft, dmdrvi_context_t, _create, ( dmin
     memset(context, 0, sizeof(*context));
     context->magic = DMLCDTFT_CONTEXT_MAGIC;
 
-    if (read_config_parameters(context, config) != 0 || start_display(context) != 0)
+    if (read_config_parameters(context, config) != 0 || start_display(context, splash_logo_path(config)) != 0)
     {
         DMOD_LOG_ERROR("Failed to create DMDRVI context with provided configuration\n");
         context->magic = 0;

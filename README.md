@@ -23,6 +23,8 @@ display as `/dev/dmlcdtft0`:
 - RGB565, RGB888, ARGB8888, ARGB1555 and ARGB4444,
 - the pixel clock is generated at run time from PLLSAI (closest achievable
   frequency to the requested one),
+- a splash screen from the first frame on: `clear_color` with a logo
+  (`.dmvir`, path in `splash_logo` or `$SPLASH_LOGO`) in the middle,
 - the framebuffer is allocated from the heap - external SDRAM when dmfmc
   registers it (`heap_usage=heap`),
 - panel *display on* and backlight pins are dmgpio friends of the display.
@@ -120,6 +122,7 @@ dmlcdtft/
 │   └── dmlcdtft_types.h    # Config, info, ioctl definitions
 ├── src/
 │   ├── dmlcdtft.c          # dmdrvi driver (core)
+│   ├── dmlcdtft_splash.c   # Splash logo (.dmvir) drawing
 │   └── port/
 │       ├── CMakeLists.txt
 │       ├── stm32_common/   # LTDC + PLLSAI, shared by F4/F7
