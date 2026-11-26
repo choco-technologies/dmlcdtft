@@ -1,6 +1,6 @@
 # Adding a New MCU Port to dmlcdtft
 
-`dmlcdtft_port` currently supports `stm32f4` and `stm32f7` (the LTDC), plus
+`dmlcdtft_port` currently supports `stm32f4` and `stm32f7` (the LTDC), `esp32s3` (the LCD_CAM, see below), plus
 an `x86_64` software stand-in used only by the host tests. The port is split
 from the core `dmlcdtft` module so a new display controller can be added
 without touching the architecture-independent logic.
@@ -66,3 +66,20 @@ model reads `GCR` back as 0.
 Note: the dmod loader does not relocate pointers stored in initialized data,
 so a module must not contain tables of pointers (e.g. `static const char
 *names[]`) - reference string literals from code only.
+
+## ESP32-S3: LCD_CAM
+
+`src/port/esp32s3/port.c`: a 16-bit RGB panel (RGB565 only) on the LCD_CAM in its RGB mode, the pins of the `pin_*` keys through the GPIO
+matrix (`board/elecrow-dis08070h/lcd.ini`: 800x480, 12 MHz).
+
+* The frame buffer (the core allocates it, in the PSRAM) is read by a circular GDMA transfer that never stops (`dmdma`, a free-running
+  transfer from the external RAM, PERI_SEL 5); the core calls `sync()` after drawing, which writes the data cache back to the PSRAM.
+  Address and size must be multiples of the cache line (64 bytes), `-ENOTSUP` otherwise.
+* The pixel clock comes from the 160 MHz PLL (divider with a fraction); `lcdtest info` shows the real one.
+* **Bandwidth**: the panel takes 2 bytes per pixel clock, 24 MB/s at 12 MHz. The PSRAM must run at 40 MHz DDR (`clock_hz=40000000` of
+  `dmpsram`/`dmqspi`; 20 MHz gives about 40 MB/s peak and is not enough: the picture breaks up).
+* If the LCD ever lacks data, the stream and the frame lose each other for good. So the vertical sync interrupt (CPU line 18) empties the
+  FIFO between them and starts the transfer from the first byte of the buffer at every frame.
+* `set_framebuffer()` restarts the transfer (a frame is lost); `set_background_color()` and `set_alpha()` are `-ENOTSUP` (no layers);
+  `get_underrun_count()` counts the DMA errors.
+* A write to the flash switches the cache off for a while: the picture may flicker for that time.

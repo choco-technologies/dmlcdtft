@@ -53,6 +53,14 @@ if(DMOD_CPU_FAMILY MATCHES "^stm32")
     )
 endif()
 
+# esp32s3: dmdma (the GDMA channel that reads the frame buffer), dmosi (sleep in wait_vsync)
+if(DMOD_CPU_FAMILY STREQUAL "esp32s3")
+    dmod_link_modules(${DMOD_MODULE_NAME}
+        dmdma
+        dmosi
+    )
+endif()
+
 target_include_directories(${DMOD_MODULE_NAME} BEFORE PRIVATE
     ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}
