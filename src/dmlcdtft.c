@@ -267,6 +267,22 @@ static void read_timing(dmini_context_t ini, dmlcdtft_timing_t *t)
     t->pclk_inverted  = string_to_switch(dmini_get_string(ini, NULL, "pclk_inverted", NULL), false);
 }
 
+/* The pins of the controllers that route them freely: pin_d0 ... pin_d23, pin_de, pin_hsync, pin_vsync, pin_pclk (the GPIO numbers, -1: none) */
+static void read_pins(dmini_context_t ini, dmlcdtft_config_t *c)
+{
+    char key[12];
+
+    for (int i = 0; i < DMLCDTFT_MAX_DATA_PINS; i++)
+    {
+        Dmod_SnPrintf(key, sizeof(key), "pin_d%d", i);
+        c->data_pins[i] = (int16_t)dmini_get_int(ini, NULL, key, -1);
+    }
+    c->de_pin    = (int16_t)dmini_get_int(ini, NULL, "pin_de", -1);
+    c->hsync_pin = (int16_t)dmini_get_int(ini, NULL, "pin_hsync", -1);
+    c->vsync_pin = (int16_t)dmini_get_int(ini, NULL, "pin_vsync", -1);
+    c->pclk_pin  = (int16_t)dmini_get_int(ini, NULL, "pin_pclk", -1);
+}
+
 /**
  * @brief Parse this driver's .ini configuration.
  *
@@ -286,6 +302,7 @@ static int read_config_parameters(dmdrvi_context_t context, dmini_context_t ini)
     c->alpha         = (uint8_t)dmini_get_int(ini, NULL, "alpha", 255);
     c->double_buffer = string_to_switch(dmini_get_string(ini, NULL, "double_buffer", NULL), false);
     read_timing(ini, &c->timing);
+    read_pins(ini, c);
 
     if (string_to_pixel_format(format, &c->pixel_format) != 0)
     {

@@ -42,6 +42,10 @@ typedef struct
     bool                pclk_inverted;      /**< Sample data on the falling edge of the pixel clock */
 } dmlcdtft_timing_t;
 
+/** Pins of the RGB bus that a controller routes freely (the ESP32-S3: the GPIO matrix); -1: not used. The controllers with fixed pins
+ *  (the LTDC: set up with dmgpio friends) ignore them. */
+#define DMLCDTFT_MAX_DATA_PINS      24
+
 /**
  * @brief Driver configuration.
  *
@@ -60,6 +64,11 @@ typedef struct
     uint8_t                 alpha;              /**< Constant alpha of the framebuffer layer */
     bool                    double_buffer;      /**< Allocate a second buffer for tear-free swaps */
     uint32_t                clear_color;        /**< 0xAARRGGBB the framebuffer is filled with at start */
+    int16_t                 data_pins[DMLCDTFT_MAX_DATA_PINS]; /**< pin_d0..: the bit n of a pixel (blue first, as in the pixel format) */
+    int16_t                 de_pin;             /**< pin_de: data enable */
+    int16_t                 hsync_pin;          /**< pin_hsync */
+    int16_t                 vsync_pin;          /**< pin_vsync */
+    int16_t                 pclk_pin;           /**< pin_pclk: the pixel clock */
 } dmlcdtft_config_t;
 
 /**
