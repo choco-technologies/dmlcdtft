@@ -455,6 +455,21 @@ static uint16_t* get_framebuffer(device_t* dev)
     return fb;
 }
 
+DMOD_TEST_STEP(dmlcdtft_brightness_needs_a_pwm_backlight)
+{
+    device_t dev;
+    DMOD_TEST_EXPECT_TRUE(device_open(&dev, TEST_INI));
+    if (dev.handle != NULL)
+    {
+        /* The backlight of the test ini is not a dmpwm friend: it can only be switched */
+        uint8_t brightness = 100;
+        DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, DMDRVI_IOCTL_GFX_SET_BRIGHTNESS, &brightness), -ENOTSUP);
+        DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, DMDRVI_IOCTL_GFX_GET_BRIGHTNESS, &brightness), -ENOTSUP);
+        DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, DMDRVI_IOCTL_GFX_SET_BRIGHTNESS, NULL), -EINVAL);
+    }
+    device_close(&dev);
+}
+
 DMOD_TEST_STEP(dmlcdtft_splash_logo_is_drawn_centered)
 {
     device_t dev;

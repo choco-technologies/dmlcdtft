@@ -35,6 +35,7 @@ its own section.
 | `backlight` | `on`/`off` | `on` | Start with the backlight on |
 | `display_enable_active_level` | `high`/`low` | `high` | Level of the `display_enable` pin when on |
 | `backlight_active_level` | `high`/`low` | `high` | Level of the `backlight` pin when on |
+| `brightness` | 0..255 | `255` | Brightness at the start, for a backlight wired as `backlight_pwm` (see below) |
 
 Timing values are the plain widths from the panel datasheet; the port turns
 them into whatever its controller needs (accumulated values on the LTDC).
@@ -121,3 +122,21 @@ friend_role=backlight
 pin=PK3
 mode=output
 ```
+
+## Dimmable backlight
+
+A backlight driven by a [dmpwm](https://github.com/choco-technologies/dmpwm) output is declared like the pins above, with
+`friend_role=backlight_pwm` (instead of a dmgpio pin with `friend_role=backlight`):
+
+```ini
+[lcd_backlight]
+driver_name=dmpwm
+friends_group=lcd
+friend_role=backlight_pwm
+pin=2
+frequency=5000
+```
+
+`DMDRVI_IOCTL_GFX_SET_BRIGHTNESS` / `GET_BRIGHTNESS` (0..255) then dim it: the driver converts the brightness to the duty with a square
+curve and writes it to the PWM while the display and the backlight (`SET_BACKLIGHT`) are on, 0 otherwise. Without a `backlight_pwm` friend
+both commands answer `-ENOTSUP`. dmpwm must be loaded before the display driver (`flash.dmd`).

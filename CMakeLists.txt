@@ -72,13 +72,16 @@ dmod_add_library(${DMOD_MODULE_NAME} ${DMOD_MODULE_VERSION}
 #          standard graphics ioctls (DMDRVI_IOCTL_GFX_*) need >= 2.2; its own
 #          ioctl numbering starts at DMDRVI_IOCTL_CUSTOM_BASE.
 # dmini:   .ini config parsing (resolution, timing, pixel format, ...).
+# dmpwm:   headers only - the backlight can be a dmpwm device (friend_role=backlight_pwm), driven with its
+#          dmpwm_ioctl_cmd_set_duty.
 # dmgpio:  headers only - the display enable and backlight pins are dmgpio
 #          friends driven through Dmod_Ioctl() on their nodes, with the
 #          ioctl numbering of dmgpio >= 1.1 (same as dmspi's chip select).
 dmod_link_modules(${DMOD_MODULE_NAME}
-    dmdrvi@>=2.5
+    dmdrvi@>=2.18
     dmini
     dmgpio@>=1.1
+    dmpwm
 )
 
 target_include_directories(${DMOD_MODULE_NAME} PRIVATE

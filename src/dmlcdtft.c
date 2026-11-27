@@ -6,6 +6,7 @@
 #include "dmdrvi.h"
 #include "dmini.h"
 #include "dmgpio_types.h"
+#include "dmpwm_types.h"
 #include <errno.h>
 #include <string.h>
 
@@ -60,6 +61,8 @@ struct dmdrvi_context
     bool                backlight_on;       /**< Backlight pin on */
     panel_pin_t         display_enable_pin; /**< friend_role=display_enable */
     panel_pin_t         backlight_pin;      /**< friend_role=backlight */
+    panel_pin_t         backlight_pwm;      /**< friend_role=backlight_pwm: a dmpwm device that dims the backlight (path NULL = not wired) */
+    uint8_t             brightness;         /**< 0..255, from the ini (brightness), SET_BRIGHTNESS */
 };
 
 static bool is_valid_context(dmdrvi_context_t context)
@@ -322,6 +325,8 @@ static int read_config_parameters(dmdrvi_context_t context, dmini_context_t ini)
         (strcmp(dmini_get_string(ini, NULL, "display_enable_active_level", "high"), "high") == 0);
     context->backlight_pin.active_high =
         (strcmp(dmini_get_string(ini, NULL, "backlight_active_level", "high"), "high") == 0);
+    int brightness = (int)dmini_get_int(ini, NULL, "brightness", 255);
+    context->brightness = (uint8_t)(brightness < 0 ? 0 : (brightness > 255 ? 255 : brightness));
 
     return check_config_parameters(c);
 }
@@ -348,6 +353,29 @@ static void panel_pin_apply(const panel_pin_t *pin, bool on)
     Dmod_FileClose(file);
 }
 
+/* Brightness (a perceived scale 0..255) to the duty of the PWM: a square, the eye sees brightness roughly as the square root of the light */
+static uint16_t brightness_to_duty(uint8_t brightness)
+{
+    return (uint16_t)(((uint32_t)brightness * brightness * DMPWM_DUTY_MAX + 32512U) / 65025U);
+}
+
+/* A dimmable backlight: the PWM duty follows the brightness while the backlight is lit, and is 0 when it is not */
+static void backlight_pwm_apply(dmdrvi_context_t context)
+{
+    if (context->backlight_pwm.path == NULL)
+        return;
+    uint16_t duty = (context->display_enabled && context->backlight_on) ? brightness_to_duty(context->brightness) : 0U;
+    void *file = Dmod_FileOpen(context->backlight_pwm.path, "r+");
+    if (file == NULL)
+    {
+        DMOD_LOG_ERROR("Failed to open the backlight PWM: %s\n", context->backlight_pwm.path);
+        return;
+    }
+    if (Dmod_Ioctl(file, dmpwm_ioctl_cmd_set_duty, &duty) != 0)
+        DMOD_LOG_ERROR("Failed to set the backlight PWM: %s\n", context->backlight_pwm.path);
+    Dmod_FileClose(file);
+}
+
 static panel_pin_t *panel_pin_by_role(dmdrvi_context_t context, const char *role)
 {
     if (role == NULL)
@@ -356,6 +384,8 @@ static panel_pin_t *panel_pin_by_role(dmdrvi_context_t context, const char *role
         return &context->display_enable_pin;
     if (strcmp(role, "backlight") == 0)
         return &context->backlight_pin;
+    if (strcmp(role, "backlight_pwm") == 0)
+        return &context->backlight_pwm;
     return NULL;
 }
 
@@ -363,6 +393,7 @@ static void panel_pins_apply(dmdrvi_context_t context)
 {
     panel_pin_apply(&context->display_enable_pin, context->display_enabled);
     panel_pin_apply(&context->backlight_pin, context->display_enabled && context->backlight_on);
+    backlight_pwm_apply(context);
 }
 
 /* ---- Framebuffers ---- */
@@ -595,10 +626,11 @@ static int set_display_enabled(dmdrvi_context_t context, bool enabled)
 
 static bool ioctl_needs_arg(int command)
 {
-    bool is_gfx = command >= (int)DMDRVI_IOCTL_GFX_GET_INFO && command <= (int)DMDRVI_IOCTL_GFX_GET_BACKLIGHT;
+    bool is_gfx = command >= (int)DMDRVI_IOCTL_GFX_GET_INFO && command <= (int)DMDRVI_IOCTL_GFX_GET_BRIGHTNESS;
     bool is_own = command >= (int)dmlcdtft_ioctl_cmd_get_status && command < (int)dmlcdtft_ioctl_cmd_max;
 
     return (is_gfx || is_own) &&
+           command != (int)DMDRVI_IOCTL_GFX_PRESENT &&         /* (NULL: the whole screen) */
            command != (int)DMDRVI_IOCTL_GFX_SWAP_BUFFERS &&
            command != (int)DMDRVI_IOCTL_GFX_WAIT_VSYNC;
 }
@@ -622,6 +654,12 @@ static int ioctl_control(dmdrvi_context_t context, int command, void *arg)
             return 0;
         case DMDRVI_IOCTL_GFX_SET_DISPLAY_ENABLED:
             return set_display_enabled(context, *(const bool *)arg);
+        case DMDRVI_IOCTL_GFX_SET_BRIGHTNESS:
+            if (context->backlight_pwm.path == NULL)
+                return -ENOTSUP;                /* a backlight that can only be switched */
+            context->brightness = *(const uint8_t *)arg;
+            backlight_pwm_apply(context);
+            return 0;
         case DMDRVI_IOCTL_GFX_SET_BACKLIGHT:
             context->backlight_on = *(const bool *)arg;
             panel_pins_apply(context);
@@ -660,6 +698,11 @@ static int ioctl_query(dmdrvi_context_t context, int command, void *arg)
             return 0;
         case DMDRVI_IOCTL_GFX_GET_BACKLIGHT:
             *(bool *)arg = context->backlight_on;
+            return 0;
+        case DMDRVI_IOCTL_GFX_GET_BRIGHTNESS:
+            if (context->backlight_pwm.path == NULL)
+                return -ENOTSUP;
+            *(uint8_t *)arg = context->brightness;
             return 0;
         case dmlcdtft_ioctl_cmd_get_background_color:
             *(uint32_t *)arg = context->config.background_color;
@@ -728,6 +771,7 @@ dmod_dmdrvi_dif_api_declaration(2.0, dmlcdtft, void, _free, ( dmdrvi_context_t c
     free_framebuffers(context);
     Dmod_Free(context->display_enable_pin.path);
     Dmod_Free(context->backlight_pin.path);
+    Dmod_Free(context->backlight_pwm.path);
     context->magic = 0;
     Dmod_Free(context);
 }
