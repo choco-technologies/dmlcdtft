@@ -75,6 +75,7 @@ typedef struct
     dmlcdtft_config_t   config;
     dmdma_lease_t       lease;
     const void         *fb;
+    volatile const void *next_fb;           /* the frame buffer the interrupt takes over at the next vertical sync (NULL: none) */
     size_t              fb_bytes;
     uint32_t            pixel_clock;
     volatile uint32_t   frames;
@@ -352,11 +353,21 @@ DMOD_IRQ_HANDLER(CPU_LINE)
     lcd.frames++;
     if (lcd.lease == NULL || lcd.hold)
         return;
+    bool swapped = false;
+    if (lcd.next_fb != NULL)
+    {
+        /* the frame buffer is replaced between two frames: nothing of the new one has been read yet */
+        lcd.fb = (const void *)lcd.next_fb;
+        if (lcd.bounce == NULL)
+            lcd.transfer.source_address = lcd.fb;
+        lcd.next_fb = NULL;
+        swapped = true;
+    }
     if (lcd.bounce != NULL)
     {
         /* all the chunks of the frame were taken and the ring is where it should be: it starts again from the first half (the halves
          * hold the chunks 0 and 1); if not, the two halves are loaded again first (the ring needs the first one only after the blanking) */
-        bool in_step = lcd.consumed == lcd.chunks && !lcd.out_of_step;
+        bool in_step = lcd.consumed == lcd.chunks && !lcd.out_of_step && !swapped;
         lcd.consumed = 0;
         lcd.out_of_step = false;
         if (!in_step)
@@ -502,8 +513,22 @@ int dmlcdtft_port_set_framebuffer(dmlcdtft_instance_t instance, const void *fb, 
 {
     if (instance != 0 || !lcd.inited || fb == NULL || ((uintptr_t)fb % FB_ALIGN) != 0)
         return -EINVAL;
-    if (wait_vblank)
-        (void)dmlcdtft_port_wait_vsync(instance, 100);
+    if (lcd.running && !lcd.hold)
+    {
+        /* The stream goes on: the interrupt takes the new buffer over at the next vertical sync (the bounce buffer
+         * gets its first chunks from it), so the panel shows the old frame to the end and the new one from its start */
+        lcd.next_fb = fb;
+        for (uint32_t waited = 0; wait_vblank && lcd.next_fb != NULL; waited++)
+        {
+            if (waited >= 100U)
+            {
+                lcd.next_fb = NULL;
+                return -ETIMEDOUT;
+            }
+            dmosi_thread_sleep(1);
+        }
+        return 0;
+    }
     lcd.hold = true;
     lcd_stop();
     lcd.fb = fb;
