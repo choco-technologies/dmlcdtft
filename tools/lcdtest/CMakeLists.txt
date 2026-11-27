@@ -21,6 +21,7 @@ dmod_add_executable(lcdtest ${DMOD_MODULE_VERSION}
 dmod_link_modules(lcdtest
     dmosi
     dmdrvi@>=2.5
+    dmdma
 )
 
 target_link_libraries(lcdtest dmlcdtft_if)

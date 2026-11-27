@@ -1,6 +1,7 @@
 #include "dmod.h"
 #include "dmosi.h"
 #include "dmlcdtft.h"
+#include "dmdma_lease.h"
 #include <errno.h>
 #include <string.h>
 
@@ -271,6 +272,95 @@ static int present(display_t *d, int ret)
     return (ret == -ENOTTY) ? 0 : ret;
 }
 
+/* The framebuffer as the driver hands it to an application (GET_FRAMEBUFFER), every STEP-th pixel of every STEP-th line as hex bytes in
+ * memory order - to be put together on the host. */
+static int cmd_dump(display_t *d, uint32_t step)
+{
+    const dmdrvi_gfx_info_t *i = &d->info;
+    const uint8_t *pixels = NULL;
+
+    if (step == 0)
+        step = 1;
+    if (Dmod_Ioctl(d->fp, DMDRVI_IOCTL_GFX_GET_FRAMEBUFFER, &pixels) != 0 || pixels == NULL)
+        return -1;
+    Dmod_Printf("DUMP %u %u %u %u\n", i->width, i->height, i->bytes_per_pixel, step);
+    for (uint32_t y = 0; y < i->height; y += step)
+    {
+        Dmod_Printf("R");
+        for (uint32_t x = 0; x < i->width; x += step)
+        {
+            const uint8_t *p = pixels + (size_t)y * i->stride + (size_t)x * i->bytes_per_pixel;
+            for (uint32_t b = 0; b < i->bytes_per_pixel; b++)
+                Dmod_Printf("%02X", p[b]);
+        }
+        Dmod_Printf("\n");
+    }
+    Dmod_Printf("END\n");
+    return 0;
+}
+
+/* PRESENT of the whole screen: what an application drew through the framebuffer pointer reaches the memory the LCD is fed from */
+static int cmd_sync(display_t *d)
+{
+    dmdrvi_gfx_rect_t all = { 0, 0, d->info.width, d->info.height };
+    int ret = Dmod_Ioctl(d->fp, DMDRVI_IOCTL_GFX_PRESENT, &all);
+
+    Dmod_Printf("present: %d\n", ret);
+    return ret;
+}
+
+static volatile bool g_copied;
+
+static void scan_callback(dmdma_lease_t lease, dmdma_event_t event, void *user)
+{
+    if ((event & (dmdma_event_complete | dmdma_event_error | dmdma_event_timeout)) != 0)
+        g_copied = true;
+}
+
+/* The same as dump, but every line is first copied by the GDMA into the internal RAM - the way the bounce buffer reads the frame buffer */
+static int cmd_scan(display_t *d, uint32_t step)
+{
+    const dmdrvi_gfx_info_t *i = &d->info;
+    const uint8_t *pixels = NULL;
+    dmdma_lease_t lease = NULL;
+    uint8_t *line = Dmod_MallocTagged("main", i->stride);
+
+    if (step == 0)
+        step = 1;
+    if (line == NULL || Dmod_Ioctl(d->fp, DMDRVI_IOCTL_GFX_GET_FRAMEBUFFER, &pixels) != 0 || pixels == NULL)
+        return -1;
+    for (unsigned s = 0; s < 5U && lease == NULL; s++)
+        lease = dmdma_lease_acquire(0U, (dmdma_stream_t)s);
+    if (lease == NULL)
+        return -EBUSY;
+    dmdma_lease_set_callback(lease, scan_callback, NULL);
+    Dmod_Printf("DUMP %u %u %u %u\n", i->width, i->height, i->bytes_per_pixel, step);
+    for (uint32_t y = 0; y < i->height; y += step)
+    {
+        dmdma_transfer_config_t t = {
+            .direction = dmdma_direction_memory_to_memory, .request = 0,
+            .source_address = pixels + (size_t)y * i->stride, .destination_address = line,
+            .source_width = dmdma_data_width_byte, .destination_width = dmdma_data_width_byte,
+            .source_increment = true, .destination_increment = true, .circular = false,
+            .priority = dmdma_priority_high, .element_count = i->stride, .timeout_ms = 0,
+        };
+        g_copied = false;
+        if (dmdma_lease_start(lease, &t) != 0)
+            break;
+        for (uint32_t waited = 0; !g_copied && waited < 100U; waited++)
+            dmosi_thread_sleep(1);
+        Dmod_Printf("R");
+        for (uint32_t x = 0; x < i->width; x += step)
+            for (uint32_t b = 0; b < i->bytes_per_pixel; b++)
+                Dmod_Printf("%02X", line[(size_t)x * i->bytes_per_pixel + b]);
+        Dmod_Printf("\n");
+    }
+    Dmod_Printf("END\n");
+    dmdma_lease_release(lease);
+    Dmod_Free(line);
+    return 0;
+}
+
 static int run_command(display_t *d, int argc, char *argv[])
 {
     const char *cmd = (argc > 0) ? argv[0] : "bars";
@@ -281,6 +371,9 @@ static int run_command(display_t *d, int argc, char *argv[])
     if (strcmp(cmd, "gradient") == 0)   return present(d, cmd_gradient(d));
     if (strcmp(cmd, "selftest") == 0)   return present(d, cmd_selftest(d));
     if (strcmp(cmd, "vsync") == 0)      return cmd_vsync(d, parse_count(arg, 60));
+    if (strcmp(cmd, "sync") == 0)       return cmd_sync(d);
+    if (strcmp(cmd, "scan") == 0)       return cmd_scan(d, parse_count(arg, 4));
+    if (strcmp(cmd, "dump") == 0)       return cmd_dump(d, parse_count(arg, 4));
     if (strcmp(cmd, "anim") == 0)       return cmd_anim(d, parse_count(arg, 300));
     if (strcmp(cmd, "fill") == 0 && arg != NULL)
         return present(d, fill(d, 0, 0, d->info.width, d->info.height, parse_hex(arg)));
