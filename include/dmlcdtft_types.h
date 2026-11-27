@@ -69,6 +69,7 @@ typedef struct
     int16_t                 hsync_pin;          /**< pin_hsync */
     int16_t                 vsync_pin;          /**< pin_vsync */
     int16_t                 pclk_pin;           /**< pin_pclk: the pixel clock */
+    uint16_t                bounce_lines;       /**< bounce_lines: lines of a half of the bounce buffer (ESP32-S3; 0: the LCD reads the frame buffer itself) */
 } dmlcdtft_config_t;
 
 /**
