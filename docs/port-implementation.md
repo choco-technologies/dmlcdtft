@@ -80,6 +80,6 @@ matrix (`board/elecrow-dis08070h/lcd.ini`: 800x480, 12 MHz).
   `dmpsram`/`dmqspi`; 20 MHz gives about 40 MB/s peak and is not enough: the picture breaks up).
 * If the LCD ever lacks data, the stream and the frame lose each other for good. So the vertical sync interrupt (CPU line 18) empties the
   FIFO between them and starts the transfer from the first byte of the buffer at every frame.
-* `set_framebuffer()` restarts the transfer (a frame is lost); `set_background_color()` and `set_alpha()` are `-ENOTSUP` (no layers);
+* `set_framebuffer()` hands the new buffer to the vertical-sync interrupt, which switches between two frames without stopping the stream (the bounce buffer is loaded from it first); only while the display is not running does it restart the transfer; `set_background_color()` and `set_alpha()` are `-ENOTSUP` (no layers);
   `get_underrun_count()` counts the DMA errors.
 * A write to the flash switches the cache off for a while: the picture may flicker for that time.
