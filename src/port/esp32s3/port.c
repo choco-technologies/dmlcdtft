@@ -107,6 +107,14 @@ static inline void dbg_sync(void)
     DBG[0] = 0xB0B0B0B0UL; DBG[1] = lcd.frames; DBG[2] = lcd.late; DBG[3] = lcd.dma_errors; DBG[4] = lcd.resyncs;
     DBG[5] = lcd.consumed; DBG[6] = lcd.job_count; DBG[7] = lcd.fill_busy; DBG[8]++;
 }
+#define ETS_PRINTF ((int (*)(const char *, ...))0x400005d0UL)
+static void dbg_print(void)
+{
+    if ((lcd.frames % 25U) == 0U)
+        ETS_PRINTF("\nLCD f=%u late=%u err=%u rs=%u cons=%u jobs=%u busy=%u ring=%u fill=%u/%u ev=%x r=%d\n", (unsigned)lcd.frames, (unsigned)lcd.late,
+                   (unsigned)lcd.dma_errors, (unsigned)lcd.resyncs, (unsigned)lcd.consumed, (unsigned)lcd.job_count, (unsigned)lcd.fill_busy,
+                   (unsigned)DBG[11], (unsigned)DBG[9], (unsigned)DBG[14], (unsigned)DBG[10], (int)DBG[13]);
+}
 
 static inline volatile uint32_t *reg(uintptr_t a) { return (volatile uint32_t *)a; }
 
@@ -362,6 +370,7 @@ DMOD_IRQ_HANDLER(CPU_LINE)
     *reg(LCD_INT_CLR) = LCD_INT_VSYNC;
     lcd.frames++;
     dbg_sync();
+    dbg_print();
     if (lcd.lease == NULL || lcd.hold)
         return;
     if (lcd.bounce != NULL)
