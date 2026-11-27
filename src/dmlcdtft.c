@@ -630,6 +630,7 @@ static bool ioctl_needs_arg(int command)
     bool is_own = command >= (int)dmlcdtft_ioctl_cmd_get_status && command < (int)dmlcdtft_ioctl_cmd_max;
 
     return (is_gfx || is_own) &&
+           command != (int)DMDRVI_IOCTL_GFX_PRESENT &&         /* (NULL: the whole screen) */
            command != (int)DMDRVI_IOCTL_GFX_SWAP_BUFFERS &&
            command != (int)DMDRVI_IOCTL_GFX_WAIT_VSYNC;
 }
