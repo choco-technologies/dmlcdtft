@@ -334,8 +334,8 @@ static void lcd_stop(void)
 
 static void dma_callback(dmdma_lease_t lease, dmdma_event_t event, void *user)
 {
-    if ((event & ~(dmdma_event_complete | dmdma_event_half_complete)) != 0)
-        lcd.dma_errors++;
+    if ((event & ~(dmdma_event_complete | dmdma_event_half_complete | dmdma_event_aborted)) != 0)
+        lcd.dma_errors++;      /* aborted: the restart at every vertical sync stops the channel itself */
 }
 
 /*
@@ -367,6 +367,10 @@ DMOD_IRQ_HANDLER(CPU_LINE)
             job_push(1U, 1U);
         }
     }
+    /* The channel is stopped (its own FIFO is emptied) BEFORE the FIFO of the LCD: a channel that still runs fills the emptied FIFO with
+     * what it was sending - the end of the last frame - ahead of the new stream, and the picture is late by those pixels (the end of a line
+     * shows at the beginning of the next one). */
+    dmdma_lease_abort(lcd.lease);
     *reg(LCD_MISC) |= LCD_MISC_AFIFO_RESET;
     *reg(LCD_MISC) &= ~LCD_MISC_AFIFO_RESET;
     if (dmdma_lease_start(lcd.lease, &lcd.transfer) == 0)
