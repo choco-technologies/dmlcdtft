@@ -100,22 +100,6 @@ typedef struct
 
 static lcd_t lcd;
 
-/* TEMP-DEBUG: the counters in the RTC slow memory (readable after a hang: esptool read-mem 0x50000400 64) */
-#define DBG ((volatile uint32_t *)0x50000400UL)
-static inline void dbg_sync(void)
-{
-    DBG[0] = 0xB0B0B0B0UL; DBG[1] = lcd.frames; DBG[2] = lcd.late; DBG[3] = lcd.dma_errors; DBG[4] = lcd.resyncs;
-    DBG[5] = lcd.consumed; DBG[6] = lcd.job_count; DBG[7] = lcd.fill_busy; DBG[8]++;
-}
-#define ETS_PRINTF ((int (*)(const char *, ...))0x400005d0UL)
-static void dbg_print(void)
-{
-    if ((lcd.frames % 25U) == 0U)
-        ETS_PRINTF("\nLCD f=%u late=%u err=%u rs=%u cons=%u jobs=%u busy=%u ring=%u fill=%u/%u ev=%x r=%d\n", (unsigned)lcd.frames, (unsigned)lcd.late,
-                   (unsigned)lcd.dma_errors, (unsigned)lcd.resyncs, (unsigned)lcd.consumed, (unsigned)lcd.job_count, (unsigned)lcd.fill_busy,
-                   (unsigned)DBG[11], (unsigned)DBG[9], (unsigned)DBG[14], (unsigned)DBG[10], (int)DBG[13]);
-}
-
 static inline volatile uint32_t *reg(uintptr_t a) { return (volatile uint32_t *)a; }
 
 static void route_out(int pad, uint32_t signal)
@@ -220,7 +204,6 @@ static int fill_start(uint32_t half, uint32_t chunk)
     };
     lcd.fill_busy = true;
     int ret = dmdma_lease_start(lcd.fill_lease, &t);
-    DBG[13] = (uint32_t)ret; DBG[14]++;
     if (ret != 0)
     {
         lcd.fill_busy = false;
@@ -257,7 +240,6 @@ static void job_push(uint32_t half, uint32_t chunk)
 
 static void fill_callback(dmdma_lease_t lease, dmdma_event_t event, void *user)
 {
-    DBG[9]++; DBG[10] = event; dbg_sync();
     if ((event & (dmdma_event_error | dmdma_event_timeout)) != 0)
         lcd.dma_errors++;
     if ((event & (dmdma_event_complete | dmdma_event_error | dmdma_event_timeout)) == 0)
@@ -281,7 +263,6 @@ static void ring_took(uint32_t half)
 
 static void ring_callback(dmdma_lease_t lease, dmdma_event_t event, void *user)
 {
-    DBG[11]++; DBG[12] = event; dbg_sync();
     if ((event & (dmdma_event_error | dmdma_event_timeout)) != 0)
         lcd.dma_errors++;
     if (lcd.hold)
@@ -369,8 +350,6 @@ DMOD_IRQ_HANDLER(CPU_LINE)
         return;
     *reg(LCD_INT_CLR) = LCD_INT_VSYNC;
     lcd.frames++;
-    dbg_sync();
-    dbg_print();
     if (lcd.lease == NULL || lcd.hold)
         return;
     if (lcd.bounce != NULL)

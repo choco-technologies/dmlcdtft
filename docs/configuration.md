@@ -28,6 +28,7 @@ its own section.
 | `clear_color` | `0xAARRGGBB` | `0xFF000000` | The framebuffer is filled with it at start - the background of the splash screen |
 | `splash_logo` | path | `$SPLASH_LOGO` | Splash logo (`.dmvir`) drawn in the middle of the screen at start; `none`: no logo. See [Splash screen](#splash-screen) |
 | `double_buffer` | `on`/`off` | `off` | Allocate a second framebuffer: `DMDRVI_IOCTL_GFX_PRESENT` / `SWAP_BUFFERS` switch them in the vertical blank |
+| `bounce_lines` | integer | `0` | ESP32-S3: lines in a half of the bounce buffer. `0`: the LCD reads the frame buffer (PSRAM) itself. `> 0`: the LCD reads two halves of that many lines in the internal RAM (`main` heap, `2 * lines * width * 2` bytes, e.g. 32000 bytes for 10 lines of 800 pixels), a second GDMA channel copies the next lines from the PSRAM. The height has to be a whole, even number of such chunks, a chunk a multiple of 64 bytes; with no internal RAM for the buffer the driver reads the frame buffer itself |
 | `pin_d0` ... `pin_d23` | integer | -1 | The GPIO of the bit n of a pixel (blue first, as in the pixel format), for the controllers that route their pins freely (ESP32-S3); the STM32 LTDC ignores them (its pins are dmgpio friends) |
 | `pin_de`, `pin_hsync`, `pin_vsync`, `pin_pclk` | integer | -1 | The GPIO of the data enable, the syncs and the pixel clock (same) |
 | `display` | `on`/`off` | `on` | Start with the display enabled |
