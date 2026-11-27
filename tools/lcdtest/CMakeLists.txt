@@ -7,6 +7,8 @@
 
 # Path to the DMR file for this module - produces a ready-to-publish
 # release package under build/packages/lcdtest alongside dmlcdtft.
+# The tool opens the device and prints: 1024 bytes (the default of the module) are not enough on Xtensa, the tool then hangs without a message
+set(DMOD_STACK_SIZE 4096)
 set(DMOD_DMR_PATH ${CMAKE_CURRENT_SOURCE_DIR}/lcdtest.dmr)
 
 dmod_add_executable(lcdtest ${DMOD_MODULE_VERSION}
