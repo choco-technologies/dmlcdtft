@@ -12,6 +12,13 @@
  * a frame that ever lacked data does not shift the picture for good. Not supported: the background colour and the alpha (no layers).
  * The bandwidth: 2 bytes per pixel clock (24 MB/s at 12 MHz) have to come from the PSRAM - it has to run at 40 MHz DDR (dmqspi), at 20 MHz the
  * picture breaks up.
+ *
+ * Bounce buffer (bounce_lines > 0): the LCD does not read the PSRAM itself. It is fed by the circular GDMA transfer from a buffer in the
+ * internal RAM, two halves of bounce_lines lines each (a "chunk"); a second GDMA channel (memory -> memory, dmdma) copies the next chunk of the
+ * frame buffer from the PSRAM into the half the LCD has just finished. The LCD then never waits for the PSRAM or the cache, only the copy has
+ * to be ready within the time of one half (bounce_lines lines). Every vertical sync the ring starts from the beginning of the buffer
+ * (halves 0 and 1 hold the chunks 0 and 1 of the frame by then); when the copies were late or the events did not add up, the two halves are
+ * loaded again first.
  */
 
 #define SYSTEM_BASE         0x600C0000UL
@@ -51,7 +58,15 @@
 #define FB_ALIGN            32U
 #define PSRAM_START         0x3C000000UL
 #define PSRAM_END           0x3E000000UL
+#define BOUNCE_JOBS         4U
+#define BOUNCE_ALIGN        64U                 /* the block of the access to the external RAM (the biggest one): a chunk is a multiple of it */
 #define ROM_CACHE_WRITEBACK ((uint32_t (*)(uint32_t, uint32_t))0x400016c8UL)
+
+typedef struct
+{
+    uint16_t            chunk;                  /* which chunk of the frame */
+    uint8_t             half;                   /* into which half of the bounce buffer */
+} fill_job_t;
 
 typedef struct
 {
@@ -68,6 +83,18 @@ typedef struct
     volatile bool       stop;
     volatile bool       hold;                   /* the DMA is being replaced: the interrupt leaves it alone */
     dmdma_transfer_config_t transfer;       /* what the interrupt starts again at every frame */
+    /* the bounce buffer (bounce == NULL: the LCD reads the frame buffer itself) */
+    uint8_t            *bounce;
+    uint32_t            chunk_bytes;            /* bounce_lines lines */
+    uint32_t            chunks;                 /* in a frame (even) */
+    dmdma_lease_t       fill_lease;             /* the copy from the external RAM */
+    volatile uint32_t   consumed;               /* chunks the ring has taken since it was started at a vertical sync */
+    volatile bool       out_of_step;            /* the events did not add up */
+    volatile bool       fill_busy;
+    volatile uint32_t   late;                   /* a half was finished while the copy of the previous one was still running */
+    fill_job_t          jobs[BOUNCE_JOBS];
+    volatile uint32_t   job_head;
+    volatile uint32_t   job_count;
 } lcd_t;
 
 
@@ -150,15 +177,138 @@ static void intenable(uint32_t line, bool on)
 
 static int start_dma(const void *fb)
 {
+    const bool bounce = lcd.bounce != NULL;
     dmdma_transfer_config_t t = {
         .direction = dmdma_direction_memory_to_peripheral, .request = PERI_SEL_LCD_CAM,
-        .source_address = fb, .destination_address = (void *)LCD_BASE,   /* ignored by the port: the peripheral side has no address */
+        .source_address = bounce ? (const void *)lcd.bounce : fb, .destination_address = (void *)LCD_BASE,   /* ignored by the port: the peripheral side has no address */
         .source_width = dmdma_data_width_byte, .destination_width = dmdma_data_width_byte,
         .source_increment = true, .destination_increment = false, .circular = true,
-        .priority = dmdma_priority_high, .element_count = lcd.fb_bytes, .timeout_ms = 0,
+        .priority = dmdma_priority_very_high, .element_count = bounce ? 2U * lcd.chunk_bytes : lcd.fb_bytes, .timeout_ms = 0,
     };
     lcd.transfer = t;
     return dmdma_lease_start(lcd.lease, &t);
+}
+
+/* ---- the bounce buffer ---- */
+
+/* Copies the chunk `chunk` of the frame buffer into the half `half` of the bounce buffer */
+static int fill_start(uint32_t half, uint32_t chunk)
+{
+    dmdma_transfer_config_t t = {
+        .direction = dmdma_direction_memory_to_memory, .request = 0,
+        .source_address = (const uint8_t *)lcd.fb + (size_t)chunk * lcd.chunk_bytes,
+        .destination_address = lcd.bounce + (size_t)half * lcd.chunk_bytes,
+        .source_width = dmdma_data_width_byte, .destination_width = dmdma_data_width_byte,
+        .source_increment = true, .destination_increment = true, .circular = false,
+        .priority = dmdma_priority_high, .element_count = lcd.chunk_bytes, .timeout_ms = 0,
+    };
+    lcd.fill_busy = true;
+    int ret = dmdma_lease_start(lcd.fill_lease, &t);
+    if (ret != 0)
+    {
+        lcd.fill_busy = false;
+        lcd.dma_errors++;
+    }
+    return ret;
+}
+
+/* The next copy waiting, when the channel is free (the interrupts; a thread only while the LCD is stopped) */
+static void jobs_run(void)
+{
+    for (uint32_t tries = 0; tries < BOUNCE_JOBS && !lcd.fill_busy && lcd.job_count != 0U; tries++)
+    {
+        fill_job_t job = lcd.jobs[lcd.job_head];
+        lcd.job_head = (lcd.job_head + 1U) % BOUNCE_JOBS;
+        lcd.job_count--;
+        (void)fill_start(job.half, job.chunk);
+    }
+}
+
+static void job_push(uint32_t half, uint32_t chunk)
+{
+    if (lcd.job_count >= BOUNCE_JOBS)
+    {
+        lcd.late++;
+        return;
+    }
+    fill_job_t *job = &lcd.jobs[(lcd.job_head + lcd.job_count) % BOUNCE_JOBS];
+    job->half = (uint8_t)half;
+    job->chunk = (uint16_t)chunk;
+    lcd.job_count++;
+    jobs_run();
+}
+
+static void fill_callback(dmdma_lease_t lease, dmdma_event_t event, void *user)
+{
+    if ((event & (dmdma_event_error | dmdma_event_timeout)) != 0)
+        lcd.dma_errors++;
+    if ((event & (dmdma_event_complete | dmdma_event_error | dmdma_event_timeout)) == 0)
+        return;                                                     /* (aborted: the owner of the transfer knows) */
+    lcd.fill_busy = false;
+    if (!lcd.hold)
+        jobs_run();
+}
+
+/* The LCD has finished the half `half`: the next chunk for it (two chunks on) is copied */
+static void ring_took(uint32_t half)
+{
+    uint32_t taken = lcd.consumed;
+    lcd.consumed = taken + 1U;
+    if ((taken & 1U) != half)
+        lcd.out_of_step = true;
+    if (lcd.fill_busy)
+        lcd.late++;
+    job_push(half, (taken + 2U) % lcd.chunks);
+}
+
+static void ring_callback(dmdma_lease_t lease, dmdma_event_t event, void *user)
+{
+    if ((event & (dmdma_event_error | dmdma_event_timeout)) != 0)
+        lcd.dma_errors++;
+    if (lcd.hold)
+        return;
+    if ((event & dmdma_event_half_complete) != 0)
+        ring_took(0U);
+    if ((event & dmdma_event_complete) != 0)
+        ring_took(1U);
+}
+
+/* The chunks 0 and 1 of the frame into the two halves, from a thread, while the LCD is stopped */
+static int bounce_prime(void)
+{
+    lcd.job_count = 0;
+    lcd.job_head = 0;
+    for (uint32_t half = 0; half < 2U; half++)
+    {
+        int ret = fill_start(half, half);
+        if (ret != 0)
+            return ret;
+        for (uint32_t waited = 0; lcd.fill_busy; waited++)
+        {
+            if (waited >= 100U)
+            {
+                dmdma_lease_abort(lcd.fill_lease);
+                lcd.fill_busy = false;
+                return -ETIMEDOUT;
+            }
+            dmosi_thread_sleep(1);
+        }
+    }
+    lcd.consumed = lcd.chunks;                                       /* (the ring is at its beginning, as after a whole frame) */
+    lcd.out_of_step = false;
+    return 0;
+}
+
+/* What feeds the LCD: the bounce buffer filled and the ring started, or the free-running read of the frame buffer */
+static int feed_start(const void *fb)
+{
+    if (lcd.bounce != NULL)
+    {
+        int ret = bounce_prime();
+        if (ret != 0)
+            return ret;
+    }
+    return start_dma(fb);
 }
 
 static void lcd_start(void)
@@ -173,6 +323,12 @@ static void lcd_stop(void)
     *reg(LCD_USER) &= ~(1UL << 27);
     *reg(LCD_USER) |= 1UL << 20;
     dmdma_lease_abort(lcd.lease);
+    if (lcd.fill_lease != NULL)
+    {
+        dmdma_lease_abort(lcd.fill_lease);
+        lcd.fill_busy = false;
+        lcd.job_count = 0;
+    }
     lcd.running = false;
 }
 
@@ -196,10 +352,25 @@ DMOD_IRQ_HANDLER(CPU_LINE)
     lcd.frames++;
     if (lcd.lease == NULL || lcd.hold)
         return;
+    if (lcd.bounce != NULL)
+    {
+        /* all the chunks of the frame were taken and the ring is where it should be: it starts again from the first half (the halves
+         * hold the chunks 0 and 1); if not, the two halves are loaded again first (the ring needs the first one only after the blanking) */
+        bool in_step = lcd.consumed == lcd.chunks && !lcd.out_of_step;
+        lcd.consumed = 0;
+        lcd.out_of_step = false;
+        if (!in_step)
+        {
+            lcd.resyncs++;
+            lcd.job_count = 0;
+            job_push(0U, 0U);
+            job_push(1U, 1U);
+        }
+    }
     *reg(LCD_MISC) |= LCD_MISC_AFIFO_RESET;
     *reg(LCD_MISC) &= ~LCD_MISC_AFIFO_RESET;
     if (dmdma_lease_start(lcd.lease, &lcd.transfer) == 0)
-        lcd.resyncs++;
+        lcd.resyncs += lcd.bounce != NULL ? 0U : 1U;
 }
 
 static void monitor_start(void)
@@ -221,6 +392,22 @@ int dmod_deinit(void) { return 0; }
 
 dmlcdtft_instance_t dmlcdtft_port_get_instance_count(void) { return 1; }
 
+/* The leases and the bounce buffer (what init made, whatever of it there is) */
+static void bounce_release(void)
+{
+    if (lcd.fill_lease != NULL)
+        dmdma_lease_release(lcd.fill_lease);
+    lcd.fill_lease = NULL;
+    if (lcd.lease != NULL)
+        dmdma_lease_release(lcd.lease);
+    lcd.lease = NULL;
+    if (lcd.bounce != NULL)
+        Dmod_Free(lcd.bounce);
+    lcd.bounce = NULL;
+    lcd.fill_busy = false;
+    lcd.job_count = 0;
+}
+
 int dmlcdtft_port_init(dmlcdtft_instance_t instance, const dmlcdtft_config_t *c, const void *fb)
 {
     uint32_t bytes = c ? (uint32_t)c->width * c->height * 2U : 0;
@@ -231,11 +418,34 @@ int dmlcdtft_port_init(dmlcdtft_instance_t instance, const dmlcdtft_config_t *c,
     lcd.config = *c;
     lcd.fb = fb;
     lcd.fb_bytes = bytes;
+    if (c->bounce_lines != 0U)
+    {
+        uint32_t chunk = (uint32_t)c->bounce_lines * c->width * 2U;
+        if (c->height % c->bounce_lines != 0U || ((c->height / c->bounce_lines) & 1U) != 0U || (chunk % BOUNCE_ALIGN) != 0U)
+            return -EINVAL;                         /* whole chunks in a frame, an even number of them, a multiple of the block of the PSRAM */
+        lcd.bounce = Dmod_MallocTagged("main", 2U * chunk);   /* the internal RAM: the LCD reads it, not the PSRAM */
+        if (lcd.bounce == NULL)
+        {
+            DMOD_LOG_WARN("No %u bytes of the internal RAM for the bounce buffer: the LCD reads the frame buffer itself\n", (unsigned)(2U * chunk));
+        }
+        else
+        {
+            lcd.chunk_bytes = chunk;
+            lcd.chunks = c->height / c->bounce_lines;
+        }
+    }
     for (unsigned s = 0; s < GDMA_STREAMS && lcd.lease == NULL; s++)
         lcd.lease = dmdma_lease_acquire(GDMA_CONTROLLER, (dmdma_stream_t)s);
-    if (lcd.lease == NULL)
+    for (unsigned s = 0; s < GDMA_STREAMS && lcd.bounce != NULL && lcd.fill_lease == NULL; s++)
+        lcd.fill_lease = dmdma_lease_acquire(GDMA_CONTROLLER, (dmdma_stream_t)s);
+    if (lcd.lease == NULL || (lcd.bounce != NULL && lcd.fill_lease == NULL))
+    {
+        bounce_release();
         return -EBUSY;
-    dmdma_lease_set_callback(lcd.lease, dma_callback, NULL);
+    }
+    dmdma_lease_set_callback(lcd.lease, lcd.bounce != NULL ? ring_callback : dma_callback, NULL);
+    if (lcd.fill_lease != NULL)
+        dmdma_lease_set_callback(lcd.fill_lease, fill_callback, NULL);
 
     *reg(PERIP_CLK_EN1) |= LCD_CAM_BIT;
     *reg(PERIP_RST_EN1) |= LCD_CAM_BIT;
@@ -243,15 +453,16 @@ int dmlcdtft_port_init(dmlcdtft_instance_t instance, const dmlcdtft_config_t *c,
     route_pins(c);
     configure_lcd(c);
     *reg(LCD_INT_CLR) = 0xFFFFFFFFUL;
-    int ret = start_dma(fb);
+    lcd.hold = true;
+    int ret = feed_start(fb);
     if (ret != 0)
     {
-        dmdma_lease_release(lcd.lease);
-        lcd.lease = NULL;
+        bounce_release();
         return ret;
     }
     lcd_start();
     lcd.inited = true;
+    lcd.hold = false;
     monitor_start();
     return 0;
 }
@@ -263,8 +474,7 @@ int dmlcdtft_port_deinit(dmlcdtft_instance_t instance)
     monitor_stop();
     lcd.hold = true;
     lcd_stop();
-    dmdma_lease_release(lcd.lease);
-    lcd.lease = NULL;
+    bounce_release();
     *reg(PERIP_CLK_EN1) &= ~LCD_CAM_BIT;
     lcd.inited = false;
     return 0;
@@ -293,7 +503,7 @@ int dmlcdtft_port_set_framebuffer(dmlcdtft_instance_t instance, const void *fb, 
     lcd.hold = true;
     lcd_stop();
     lcd.fb = fb;
-    int ret = start_dma(fb);
+    int ret = feed_start(fb);
     lcd_start();
     lcd.hold = false;
     return ret;
@@ -305,7 +515,7 @@ int dmlcdtft_port_set_enabled(dmlcdtft_instance_t instance, bool enabled)
         return -EINVAL;
     if (enabled && !lcd.running)
     {
-        int ret = start_dma(lcd.fb);
+        int ret = feed_start(lcd.fb);
         if (ret == 0)
             lcd_start();
         lcd.hold = false;
@@ -330,4 +540,5 @@ void dmlcdtft_port_sync(dmlcdtft_instance_t instance, const void *address, size_
 }
 
 uint32_t dmlcdtft_port_get_pixel_clock(dmlcdtft_instance_t instance) { return lcd.pixel_clock; }
-uint32_t dmlcdtft_port_get_underrun_count(dmlcdtft_instance_t instance) { return lcd.dma_errors; }
+/* The DMA errors, and the copies of the bounce buffer that were late (a half finished before the previous copy had) or lost */
+uint32_t dmlcdtft_port_get_underrun_count(dmlcdtft_instance_t instance) { return lcd.dma_errors + lcd.late; }

@@ -301,6 +301,7 @@ static int read_config_parameters(dmdrvi_context_t context, dmini_context_t ini)
     c->height        = (uint16_t)dmini_get_int(ini, NULL, "height", 0);
     c->alpha         = (uint8_t)dmini_get_int(ini, NULL, "alpha", 255);
     c->double_buffer = string_to_switch(dmini_get_string(ini, NULL, "double_buffer", NULL), false);
+    c->bounce_lines  = (uint16_t)dmini_get_int(ini, NULL, "bounce_lines", 0);
     read_timing(ini, &c->timing);
     read_pins(ini, c);
 
